@@ -1,0 +1,9 @@
+[
+  {"Id": "001", "Date": "2025-01-02T10:00:00", "Organization": "demo-org", "Amount": "1000.10", "Posted": true, "Currency": "RUB", "Direction": "Разработка ПО"},
+  {"Id": "002", "Date": "2025-01-10T10:00:00", "Organization": "demo-org", "Amount": "2500.20", "Posted": true, "Currency": "RUB", "Direction": "Поддержка"},
+  {"Id": "003", "Date": "2025-01-31T23:59:59", "Organization": "demo-org", "Amount": "499.70", "Posted": true, "Currency": "RUB", "Direction": "Разработка ПО"},
+  {"Id": "004", "Date": "2025-01-15T10:00:00", "Organization": "demo-org", "Amount": "99999.00", "Posted": false, "Currency": "RUB", "Direction": "Поддержка"},
+  {"Id": "005", "Date": "2025-01-15T10:00:00", "Organization": "other-org", "Amount": "88888.00", "Posted": true, "Currency": "RUB", "Direction": "Поддержка"},
+  {"Id": "006", "Date": "2025-02-01T00:00:00", "Organization": "demo-org", "Amount": "77777.00", "Posted": true, "Currency": "RUB", "Direction": "Поддержка"},
+  {"Id": "007", "Date": "2025-01-15T10:00:00", "Organization": "demo-org", "Amount": "66666.00", "Posted": true, "Currency": "USD", "Direction": "Поддержка"}
+]

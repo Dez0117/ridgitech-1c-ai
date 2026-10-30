@@ -1,0 +1,27 @@
+{
+  "base_id": "demo",
+  "semantic_version": "demo-1",
+  "catalog_version": "demo-1",
+  "entities": [{
+    "entity_name": "DemoSales",
+    "key_field": "Id",
+    "fields": {"Id": "Edm.String", "Date": "Edm.DateTime", "Organization": "Edm.String", "Amount": "Edm.Decimal", "Posted": "Edm.Boolean", "Currency": "Edm.String", "Direction": "Edm.String"},
+    "expand_paths": []
+  }],
+  "metrics": [{
+    "metric_id": "demo_sales",
+    "name": "Тестовая сумма продаж",
+    "description": "Учебная сумма Amount проведённых тестовых строк в RUB за период. Не определение выручки или задолженности заказчика. Округление ROUND_HALF_UP после суммирования.",
+    "synonyms": ["продажи", "продаж", "тестовая сумма продаж"],
+    "approval": "demo",
+    "entity_name": "DemoSales",
+    "amount_field": "Amount",
+    "date_field": "Date",
+    "organization_field": "Organization",
+    "mandatory_filters": [{"field": "Posted", "operator": "eq", "value": true}, {"field": "Currency", "operator": "eq", "value": "RUB"}],
+    "dimensions": {"direction": "Direction"},
+    "unit": "RUB",
+    "decimal_places": 2,
+    "aggregation": "sum"
+  }]
+}

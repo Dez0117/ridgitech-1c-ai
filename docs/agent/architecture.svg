@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2020" height="1600" viewBox="0 0 2020 1600" role="img" aria-labelledby="title desc">
+<title id="title">Архитектура AI-агента для аналитики 1С</title>
+<desc id="desc">Граф LangGraph управляет контекстом, планированием, валидацией, вызовами LangChain tools, уточнениями и ответом. Локальная модель Qwen3.8-27B или DeepSeek-V4-Flash обслуживается через vLLM. Расчётные инструменты обращаются к API данных, который читает штатный OData 1С. PostgreSQL сохраняет checkpoints и аудит, Redis хранит кэш, локальная наблюдаемость собирает трейсы и оценки качества.</desc>
+<rect width="2020" height="1600" fill="#f8fafc" />
+
+<text x="55" y="65" font-family="Arial, sans-serif" font-size="38" font-weight="bold" fill="#172d49" text-anchor="start">Архитектура AI-агента для аналитики 1С</text>
+<rect x="680" y="140" width="600" height="90" rx="18" fill="#eef3f9" stroke="#cbd8e7" stroke-width="2" />
+<text x="980.0" y="176" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Веб-чат → Nginx → FastAPI</text>
+<text x="980.0" y="209" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Вопрос · история · пользователь · организация</text>
+<rect x="545" y="270" width="900" height="1080" rx="26" fill="#ffffff" stroke="#adc3df" stroke-width="2.5" />
+<text x="575" y="308" font-family="Arial, sans-serif" font-size="23" font-weight="bold" fill="#2b4a71" text-anchor="start">LangGraph · агентный граф</text>
+<rect x="680" y="350" width="600" height="90" rx="18" fill="#edf4ff" stroke="#a6c1e6" stroke-width="2" />
+<text x="980.0" y="386" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Контекст и каталог</text>
+<text x="980.0" y="419" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Права · база · время · релевантные определения</text>
+<rect x="680" y="510" width="600" height="100" rx="18" fill="#e9f1ff" stroke="#9abbe8" stroke-width="2" />
+<text x="980.0" y="546" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">LLM-планировщик</text>
+<text x="980.0" y="579" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Понять вопрос · выбрать tools · составить Query Plan</text>
+<rect x="680" y="680" width="600" height="100" rx="18" fill="#eaf7f0" stroke="#a1cdb8" stroke-width="2" />
+<text x="980.0" y="716" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Валидатор плана</text>
+<text x="980.0" y="749" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Pydantic · методология · доступы · зависимости</text>
+<rect x="680" y="860" width="600" height="110" rx="18" fill="#edf4ff" stroke="#a6c1e6" stroke-width="2" />
+<text x="980.0" y="896" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">ToolNode · LangChain tools</text>
+<text x="980.0" y="929" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Разрешённые шаги · HTTPX → API данных</text>
+<text x="980.0" y="955" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Deadline · retry budget · идемпотентность</text>
+<rect x="680" y="1040" width="600" height="90" rx="18" fill="#eaf7f0" stroke="#a1cdb8" stroke-width="2" />
+<text x="980.0" y="1076" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Проверка результата</text>
+<text x="980.0" y="1109" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Полнота · единицы · источники · контрольные правила</text>
+<rect x="680" y="1200" width="600" height="100" rx="18" fill="#eaf7f0" stroke="#a1cdb8" stroke-width="2" />
+<text x="980.0" y="1236" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Ответ и объяснение</text>
+<text x="980.0" y="1269" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Число / таблица · период · фильтры · источники</text>
+<rect x="55" y="340" width="365" height="110" rx="18" fill="#ffffff" stroke="#cbd8e7" stroke-width="2" />
+<text x="237.5" y="376" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">PostgreSQL</text>
+<text x="237.5" y="409" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Состояние графа · checkpoints</text>
+<text x="237.5" y="435" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">История диалога · планы · аудит</text>
+<rect x="55" y="510" width="365" height="140" rx="18" fill="#ffffff" stroke="#cbd8e7" stroke-width="2" />
+<text x="237.5" y="546" font-family="Arial, sans-serif" font-size="23" font-weight="bold" fill="#203650" text-anchor="middle">Реестр инструментов</text>
+<text x="237.5" y="579" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">LangChain · .md-инструкции</text>
+<text x="237.5" y="605" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">JSON Schema · allowlist</text>
+<text x="237.5" y="631" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Метаданные · lookup · расчёты</text>
+<rect x="55" y="725" width="365" height="110" rx="18" fill="#fff5e8" stroke="#e0bb85" stroke-width="2" />
+<text x="237.5" y="761" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Уточнение</text>
+<text x="237.5" y="794" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Вопрос пользователю</text>
+<text x="237.5" y="820" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">interrupt / resume</text>
+<rect x="55" y="985" width="365" height="115" rx="18" fill="#ffffff" stroke="#cbd8e7" stroke-width="2" />
+<text x="237.5" y="1021" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Redis</text>
+<text x="237.5" y="1054" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Метаданные · результаты tools</text>
+<text x="237.5" y="1080" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">TTL · база · область доступа</text>
+<rect x="55" y="1200" width="365" height="115" rx="18" fill="#ffffff" stroke="#cbd8e7" stroke-width="2" />
+<text x="237.5" y="1236" font-family="Arial, sans-serif" font-size="21" font-weight="bold" fill="#203650" text-anchor="middle">Наблюдаемость · on-prem</text>
+<text x="237.5" y="1269" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Langfuse · OpenTelemetry</text>
+<text x="237.5" y="1295" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Трейсы · метрики · evals</text>
+<rect x="1530" y="500" width="435" height="150" rx="18" fill="#f1edff" stroke="#bcaee8" stroke-width="2" />
+<text x="1747.5" y="536" font-family="Arial, sans-serif" font-size="23" font-weight="bold" fill="#203650" text-anchor="middle">Локальный инференс · vLLM</text>
+<text x="1747.5" y="569" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Qwen3.8-27B</text>
+<text x="1747.5" y="595" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">или DeepSeek-V4-Flash</text>
+<text x="1747.5" y="621" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">LangChain · tool calling</text>
+<rect x="1530" y="860" width="435" height="165" rx="18" fill="#ffffff" stroke="#cbd8e7" stroke-width="2" />
+<text x="1747.5" y="896" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">API данных</text>
+<text x="1747.5" y="929" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Каталог 27 наборов · схемы tools</text>
+<text x="1747.5" y="955" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Продажи · поступления · остатки</text>
+<text x="1747.5" y="981" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Пагинация · Decimal · TTL · источники</text>
+<rect x="1530" y="1130" width="435" height="110" rx="18" fill="#ffffff" stroke="#cbd8e7" stroke-width="2" />
+<text x="1747.5" y="1166" font-family="Arial, sans-serif" font-size="23" font-weight="bold" fill="#203650" text-anchor="middle">1С · штатный OData v3</text>
+<text x="1747.5" y="1199" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Только чтение</text>
+<text x="1747.5" y="1225" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">Сущности · Balance / Turnovers</text>
+<polyline points="980,230 980,350" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="980,350 974.5,337.0 985.5,337.0" fill="#526b88" />
+<polyline points="980,440 980,510" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="980,510 974.5,497.0 985.5,497.0" fill="#526b88" />
+<polyline points="980,610 980,680" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="980,680 974.5,667.0 985.5,667.0" fill="#526b88" />
+<polyline points="980,780 980,860" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="980,860 974.5,847.0 985.5,847.0" fill="#526b88" />
+<text x="1000" y="825" font-family="Arial, sans-serif" font-size="17" font-weight="normal" fill="#465b73" text-anchor="start">принятый план</text>
+<polyline points="980,970 980,1040" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="980,1040 974.5,1027.0 985.5,1027.0" fill="#526b88" />
+<text x="1000" y="1014" font-family="Arial, sans-serif" font-size="17" font-weight="normal" fill="#465b73" text-anchor="start">результат расчёта</text>
+<polyline points="980,1130 980,1200" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="980,1200 974.5,1187.0 985.5,1187.0" fill="#526b88" />
+<polyline points="680,395 420,395" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="420,395 433.0,389.5 433.0,400.5" fill="#526b88" />
+<polygon points="680,395 667.0,400.5 667.0,389.5" fill="#526b88" />
+<polyline points="420,555 485,555 485,472 730,472 730,440" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="730,440 735.5,453.0 724.5,453.0" fill="#526b88" />
+<text x="510" y="463" font-family="Arial, sans-serif" font-size="16" font-weight="normal" fill="#465b73" text-anchor="start">схемы и инструкции</text>
+<polyline points="1280,550 1530,550" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="1530,550 1517.0,555.5 1517.0,544.5" fill="#526b88" />
+<polygon points="1280,550 1293.0,544.5 1293.0,555.5" fill="#526b88" />
+<text x="1295" y="532" font-family="Arial, sans-serif" font-size="16" font-weight="normal" fill="#465b73" text-anchor="start">вызов / ответ модели</text>
+<polyline points="1280,925 1530,925" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="1530,925 1517.0,930.5 1517.0,919.5" fill="#526b88" />
+<polygon points="1280,925 1293.0,919.5 1293.0,930.5" fill="#526b88" />
+<text x="1295" y="953" font-family="Arial, sans-serif" font-size="15" font-weight="normal" fill="#465b73" text-anchor="start">типизированный HTTP-вызов</text>
+<polyline points="1747,1025 1747,1130" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="1747,1130 1741.5,1117.0 1752.5,1117.0" fill="#526b88" />
+<polygon points="1747,1025 1752.5,1038.0 1741.5,1038.0" fill="#526b88" />
+<text x="1765" y="1087" font-family="Arial, sans-serif" font-size="17" font-weight="normal" fill="#465b73" text-anchor="start">OData GET</text>
+<polyline points="1280,890 1390,890 1390,590 1280,590" fill="none" stroke="#a7742f" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="1280,590 1293.0,584.5 1293.0,595.5" fill="#a7742f" />
+<text x="1290" y="878" font-family="Arial, sans-serif" font-size="14" font-weight="normal" fill="#a7742f" text-anchor="start">метаданные</text>
+<polyline points="1280,725 1390,725" fill="none" stroke="#a7742f" stroke-width="2.8" stroke-linejoin="round" />
+<circle cx="1390" cy="725" r="4" fill="#a7742f" />
+<text x="1292" y="711" font-family="Arial, sans-serif" font-size="13" font-weight="normal" fill="#a7742f" text-anchor="start">ошибки плана</text>
+<polyline points="680,755 490,755 490,785 420,785" fill="none" stroke="#a7742f" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="420,785 433.0,779.5 433.0,790.5" fill="#a7742f" />
+<polygon points="680,755 667.0,760.5 667.0,749.5" fill="#a7742f" />
+<text x="505" y="745" font-family="Arial, sans-serif" font-size="16" font-weight="normal" fill="#a7742f" text-anchor="start">уточнить</text>
+<polyline points="680,945 515,945 515,1042 420,1042" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="420,1042 433.0,1036.5 433.0,1047.5" fill="#526b88" />
+<polygon points="680,945 667.0,950.5 667.0,939.5" fill="#526b88" />
+<polyline points="680,1258 420,1258" fill="none" stroke="#526b88" stroke-width="2.8" stroke-linejoin="round" />
+<polygon points="420,1258 433.0,1252.5 433.0,1263.5" fill="#526b88" />
+<polygon points="680,1258 667.0,1263.5 667.0,1252.5" fill="#526b88" />
+<rect x="55" y="1450" width="1910" height="110" rx="18" fill="#eef3f9" stroke="#cbd8e7" stroke-width="2" />
+<text x="1010.0" y="1486" font-family="Arial, sans-serif" font-size="25" font-weight="bold" fill="#203650" text-anchor="middle">Python 3.12 · FastAPI · LangGraph · LangChain · Pydantic</text>
+<text x="1010.0" y="1519" font-family="Arial, sans-serif" font-size="19" font-weight="normal" fill="#465b73" text-anchor="middle">vLLM · HTTPX · PostgreSQL · Redis · Docker · локальные трейсы и оценка качества</text>
+</svg>

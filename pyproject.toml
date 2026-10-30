@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ridgitech-agent"
+version = "0.1.0"
+description = "Prototype of a validated analytics agent for 1C"
+requires-python = ">=3.9"
+dependencies = ["pydantic>=2.10,<3"]
+
+[project.scripts]
+ridgitech-demo = "ridgitech_agent.demo:main"
+
+[tool.setuptools.packages.find]
+include = ["ridgitech_agent*"]
+
+[tool.setuptools.package-data]
+ridgitech_agent = ["fixtures/*.json", "prompts/*.md", "tools/*.md"]
