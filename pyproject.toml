@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ridgitech-agent-tools"
+version = "0.1.0"
+description = "Typed LangChain tools for Ridgitech analytics"
+requires-python = ">=3.12"
+dependencies = ["langchain-core>=1.7,<2", "pydantic>=2.10,<3"]
+
+[project.optional-dependencies]
+test = ["langgraph>=1,<2"]
+
+[tool.setuptools.packages.find]
+include = ["tools*"]
+
+[tool.setuptools.package-data]
+tools = ["*.md"]
