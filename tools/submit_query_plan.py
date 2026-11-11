@@ -9,13 +9,18 @@ class Arguments(BaseArguments):
     plan: QueryPlan
 
 
+def accepted(runtime):
+    return {"data": {"status": "accepted", "plan_id": runtime.plan_id,
+                     "plan": {**runtime.plan, "steps": list(runtime.steps.values())}}}
+
+
 async def execute(runtime, args: Arguments):
     plan = args.plan
     payload = plan.model_dump(mode="json")
     async with runtime.plan_lock:
         if runtime.plan is not None:
             if runtime.plan == payload:
-                return {"data": {"status": "accepted", "plan_id": runtime.plan_id}}
+                return accepted(runtime)
             raise BackendError("PLAN_ALREADY_ACCEPTED", "В этом запросе уже принят другой план.")
         runtime.check_scope(payload)
         response = await runtime.read("get_metric_definition", {"metric_id": plan.metric_id})
@@ -59,4 +64,4 @@ async def execute(runtime, args: Arguments):
         runtime.plan = payload
         runtime.steps = steps
         runtime.step_locks = {step_id: asyncio.Lock() for step_id in steps}
-        return {"data": {"status": "accepted", "plan_id": runtime.plan_id}}
+        return accepted(runtime)

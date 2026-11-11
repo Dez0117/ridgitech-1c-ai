@@ -1,0 +1,36 @@
+{
+  "version": "synthetic-v1",
+  "organizations": [{"id": "demo-org", "name": "Тестовая организация", "synonyms": ["тестовая", "demo-org"]}],
+  "counterparties": [{"id": "demo-a", "name": "Контрагент А"}, {"id": "demo-b", "name": "Контрагент Б"}],
+  "directions": [{"id": "demo-dev", "name": "Разработка ПО"}, {"id": "demo-support", "name": "Поддержка"}],
+  "metrics": [
+    {"metric_id": "demo_sales", "name": "Тестовые обороты продаж", "description": "Учебная сумма проведённых продаж в RUB. Источник DemoSales. Не определение выручки заказчика.", "synonyms": ["продажи", "продаж", "оборот", "обороты", "продажам", "топ", "контрагентов"], "entity_name": "DemoSales", "approval": "approved", "semantic_version": "synthetic-v1", "catalog_version": "synthetic-v1", "supported_tools": ["get_sales_turnovers", "get_top_counterparties"], "time_kind": "period", "allowed_group_by": ["direction_id", "counterparty_id"], "allowed_filters": ["posted", "currency", "direction_id", "counterparty_id"], "required_filters": {"posted": true, "currency": "RUB"}, "unit": "RUB", "decimal_places": 2},
+    {"metric_id": "demo_cash", "name": "Тестовые поступления денег по направлению", "description": "Учебная сумма проведённых поступлений в RUB. Это поступления денег, а не выручка.", "synonyms": ["поступления", "поступлений", "поступило", "деньги", "денег", "денежных", "направление", "направлению"], "entity_name": "DemoReceipts", "approval": "approved", "semantic_version": "synthetic-v1", "catalog_version": "synthetic-v1", "supported_tools": ["get_cash_receipts_by_direction"], "time_kind": "period", "allowed_group_by": [], "allowed_filters": ["posted", "currency"], "required_filters": {"posted": true, "currency": "RUB"}, "unit": "RUB", "decimal_places": 2},
+    {"metric_id": "demo_balances", "name": "Тестовая дебиторская задолженность покупателей", "description": "Учебный остаток взаиморасчётов из снимка DemoBalances/Balance на начало дня. Суммируются положительные остатки в RUB; это не методология заказчика.", "synonyms": ["дебиторская", "дебиторскую", "задолженность", "долг", "долги", "остатки", "взаиморасчеты", "покупатели"], "entity_name": "DemoBalances", "approval": "approved", "semantic_version": "synthetic-v1", "catalog_version": "synthetic-v1", "supported_tools": ["get_customer_balances"], "time_kind": "as_of", "as_of_rule": "start_of_day", "allowed_group_by": ["counterparty_id"], "allowed_filters": [], "required_filters": {}, "unit": "RUB", "decimal_places": 2}
+  ],
+  "sales": [
+    {"id": "s01", "date": "2025-01-02", "organization_id": "demo-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "1000.10", "posted": true, "currency": "RUB"},
+    {"id": "s02", "date": "2025-01-10", "organization_id": "demo-org", "counterparty_id": "demo-b", "direction_id": "demo-support", "amount": "2500.20", "posted": true, "currency": "RUB"},
+    {"id": "s03", "date": "2025-01-31", "organization_id": "demo-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "499.70", "posted": true, "currency": "RUB"},
+    {"id": "s04", "date": "2025-01-15", "organization_id": "demo-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "99999.00", "posted": false, "currency": "RUB"},
+    {"id": "s05", "date": "2025-01-15", "organization_id": "other-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "88888.00", "posted": true, "currency": "RUB"},
+    {"id": "s06", "date": "2025-02-01", "organization_id": "demo-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "77777.00", "posted": true, "currency": "RUB"},
+    {"id": "s07", "date": "2025-01-15", "organization_id": "demo-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "66666.00", "posted": true, "currency": "USD"},
+    {"id": "s08", "date": "2024-01-05", "organization_id": "demo-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "1000.00", "posted": true, "currency": "RUB"},
+    {"id": "s09", "date": "2024-01-10", "organization_id": "demo-org", "counterparty_id": "demo-b", "direction_id": "demo-support", "amount": "2000.00", "posted": true, "currency": "RUB"},
+    {"id": "s10", "date": "2026-10-03", "organization_id": "demo-org", "counterparty_id": "demo-a", "direction_id": "demo-dev", "amount": "120.10", "posted": true, "currency": "RUB"},
+    {"id": "s11", "date": "2026-10-20", "organization_id": "demo-org", "counterparty_id": "demo-b", "direction_id": "demo-support", "amount": "80.20", "posted": true, "currency": "RUB"}
+  ],
+  "receipts": [
+    {"id": "r01", "date": "2025-01-05", "organization_id": "demo-org", "direction_id": "demo-dev", "amount": "5000.10", "posted": true, "currency": "RUB"},
+    {"id": "r02", "date": "2025-01-20", "organization_id": "demo-org", "direction_id": "demo-dev", "amount": "1000.20", "posted": true, "currency": "RUB"},
+    {"id": "r03", "date": "2025-01-25", "organization_id": "demo-org", "direction_id": "demo-support", "amount": "1500.50", "posted": true, "currency": "RUB"},
+    {"id": "r04", "date": "2025-01-25", "organization_id": "demo-org", "direction_id": "demo-dev", "amount": "99999.00", "posted": false, "currency": "RUB"}
+  ],
+  "balances": [
+    {"as_of": "2025-01-31T00:00:00+03:00", "organization_id": "demo-org", "counterparty_id": "demo-a", "amount": "500.00", "currency": "RUB"},
+    {"as_of": "2025-01-31T00:00:00+03:00", "organization_id": "demo-org", "counterparty_id": "demo-b", "amount": "200.00", "currency": "RUB"},
+    {"as_of": "2026-11-11T00:00:00+03:00", "organization_id": "demo-org", "counterparty_id": "demo-a", "amount": "900.00", "currency": "RUB"},
+    {"as_of": "2026-11-11T00:00:00+03:00", "organization_id": "demo-org", "counterparty_id": "demo-b", "amount": "1200.00", "currency": "RUB"}
+  ]
+}

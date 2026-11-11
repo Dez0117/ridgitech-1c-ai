@@ -4,16 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ridgitech-agent-tools"
-version = "0.1.0"
-description = "Typed LangChain tools for Ridgitech analytics"
+version = "0.2.0"
+description = "LangGraph analytics agent and reproducible Qwen evaluation runs"
 requires-python = ">=3.12"
-dependencies = ["langchain-core>=1.7,<2", "pydantic>=2.10,<3"]
+dependencies = [
+    "langchain-core>=1.7,<2",
+    "langgraph>=1.2,<2",
+    "langchain-openrouter>=0.2.9,<0.3",
+    "pydantic>=2.10,<3",
+    "python-dotenv>=1.2,<2",
+]
 
 [project.optional-dependencies]
-test = ["langgraph>=1,<2"]
+test = []
+
+[project.scripts]
+ridgitech-agent = "agent.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["tools*"]
+include = ["tools*", "agent*"]
 
 [tool.setuptools.package-data]
 tools = ["*.md"]
+agent = ["prompts/*.md", "fixtures/*.json"]
