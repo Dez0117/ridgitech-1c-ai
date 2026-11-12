@@ -53,7 +53,7 @@ class AgentRun(Base):
     __tablename__ = "agent_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('running', 'completed', 'needs_clarification', 'failed')",
+            "status IN ('queued', 'running', 'completed', 'needs_clarification', 'failed')",
             name="ck_agent_runs_status",
         ),
         Index("ix_agent_runs_conversation_created", "conversation_id", "created_at"),
@@ -61,8 +61,8 @@ class AgentRun(Base):
             "uq_agent_runs_running_conversation",
             "conversation_id",
             unique=True,
-            postgresql_where=text("status = 'running'"),
-            sqlite_where=text("status = 'running'"),
+            postgresql_where=text("status IN ('queued', 'running')"),
+            sqlite_where=text("status IN ('queued', 'running')"),
         ),
     )
 
@@ -73,7 +73,7 @@ class AgentRun(Base):
     user_message_id: Mapped[UUID] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"), nullable=False)
     assistant_message_id: Mapped[UUID | None] = mapped_column(ForeignKey("messages.id", ondelete="SET NULL"))
     request_id: Mapped[str | None] = mapped_column(String(128), unique=True)
-    status: Mapped[str] = mapped_column(String(32), default="running", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued", nullable=False)
     trace: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     error: Mapped[dict | None] = mapped_column(JSON)
     usage: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

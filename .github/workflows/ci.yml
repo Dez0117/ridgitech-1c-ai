@@ -43,4 +43,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - run: docker build --tag ridgitech-1c-ai:ci .
+      - run: docker compose config --quiet
+      - run: docker compose up --detach --build --wait
+      - run: curl --fail --show-error http://localhost:8000/health | grep --fixed-strings '"status":"ok"'
+      - if: always()
+        run: docker compose logs --no-color
+      - if: always()
+        run: docker compose down --volumes
