@@ -57,10 +57,9 @@ class AgentRunRead(BaseModel):
     completed_at: datetime | None
 
 
-class ChatResponse(BaseModel):
+class ChatAcceptedResponse(BaseModel):
     conversation: ConversationRead
     user_message: MessageRead
-    assistant_message: MessageRead
     run: AgentRunRead
 
 

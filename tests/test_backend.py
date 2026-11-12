@@ -1,6 +1,6 @@
 import asyncio
 import os
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["REDIS_URL"] = "redis://localhost:6379/15"
@@ -12,8 +12,9 @@ from sqlalchemy.pool import StaticPool
 from agent.models import AgentResult
 from backend.cache import get_cache
 from backend.database import Base, get_session
-from backend.integrations.agent_service import get_agent_service
 from backend.main import app
+from backend.models import AgentRun, Message
+from backend.services.agent_runs import AgentRunProcessor, get_agent_run_processor
 
 
 class FakeCache:
@@ -61,6 +62,7 @@ def test_chat_flow_persists_history():
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
     fake_cache = FakeCache()
     fake_agent = FakeAgent()
+    processor = AgentRunProcessor(session_factory, fake_cache, fake_agent)
 
     async def session_override():
         async with session_factory() as session:
@@ -73,7 +75,7 @@ def test_chat_flow_persists_history():
     asyncio.run(prepare())
     app.dependency_overrides[get_session] = session_override
     app.dependency_overrides[get_cache] = lambda: fake_cache
-    app.dependency_overrides[get_agent_service] = lambda: fake_agent
+    app.dependency_overrides[get_agent_run_processor] = lambda: processor
     try:
         with TestClient(app) as client:
             created = client.post("/api/v1/conversations", json={"organization_id": "  demo-org  "})
@@ -84,9 +86,9 @@ def test_chat_flow_persists_history():
             response = client.post(
                 f"/api/v1/conversations/{conversation_id}/messages", json={"content": "Продажи за январь"}
             )
-            assert response.status_code == 201
-            assert response.json()["run"]["status"] == "completed"
-            assert response.json()["assistant_message"]["content"] == "Ответ на: Продажи за январь"
+            assert response.status_code == 202
+            assert response.json()["run"]["status"] == "running"
+            assert response.headers["location"] == f"/api/v1/agent-runs/{response.json()['run']['id']}"
 
             history = client.get(f"/api/v1/conversations/{conversation_id}/messages")
             assert history.status_code == 200
@@ -96,6 +98,7 @@ def test_chat_flow_persists_history():
             assert runs.status_code == 200
             assert len(runs.json()) == 1
             assert runs.json()[0]["id"] == response.json()["run"]["id"]
+            assert runs.json()[0]["status"] == "completed"
 
             blank = client.post(
                 f"/api/v1/conversations/{conversation_id}/messages", json={"content": "   "}
@@ -105,20 +108,51 @@ def test_chat_flow_persists_history():
             trimmed = client.post(
                 f"/api/v1/conversations/{conversation_id}/messages", json={"content": "  Поступления  "}
             )
-            assert trimmed.status_code == 201
+            assert trimmed.status_code == 202
             assert trimmed.json()["user_message"]["content"] == "Поступления"
             assert fake_agent.calls[-1]["history"] == "user: Продажи за январь\nassistant: Ответ на: Продажи за январь"
 
-            app.dependency_overrides[get_agent_service] = lambda: FailingAgent()
+            failing_processor = AgentRunProcessor(session_factory, fake_cache, FailingAgent())
+            app.dependency_overrides[get_agent_run_processor] = lambda: failing_processor
             failed = client.post(
                 f"/api/v1/conversations/{conversation_id}/messages", json={"content": "Задолженность"}
             )
-            assert failed.status_code == 201
-            assert failed.json()["run"]["status"] == "failed"
-            assert failed.json()["run"]["error"]["code"] == "AGENT_UNAVAILABLE"
+            assert failed.status_code == 202
+            assert failed.json()["run"]["status"] == "running"
 
             runs = client.get(f"/api/v1/conversations/{conversation_id}/agent-runs")
             assert [run["status"] for run in runs.json()] == ["completed", "completed", "failed"]
+            assert runs.json()[-1]["error"]["code"] == "AGENT_UNAVAILABLE"
+
+            async def create_running_run():
+                async with session_factory() as session:
+                    message = Message(
+                        conversation_id=UUID(conversation_id),
+                        role="user",
+                        content="Активный запрос",
+                    )
+                    session.add(message)
+                    await session.flush()
+                    run = AgentRun(
+                        conversation_id=UUID(conversation_id),
+                        user_message_id=message.id,
+                        status="running",
+                    )
+                    session.add(run)
+                    await session.commit()
+                    return run.id
+
+            active_run_id = asyncio.run(create_running_run())
+            conflict = client.post(
+                f"/api/v1/conversations/{conversation_id}/messages",
+                json={"content": "Ещё один запрос"},
+            )
+            assert conflict.status_code == 409
+            assert conflict.json()["detail"] == {
+                "code": "RUN_IN_PROGRESS",
+                "run_id": str(active_run_id),
+            }
+            assert conflict.headers["location"] == f"/api/v1/agent-runs/{active_run_id}"
     finally:
         app.dependency_overrides.clear()
         asyncio.run(test_engine.dispose())

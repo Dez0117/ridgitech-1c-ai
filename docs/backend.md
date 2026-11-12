@@ -33,7 +33,7 @@ Content-Type: application/json
 {"organization_id":"demo-org"}
 ```
 
-Send a message and synchronously invoke the agent:
+Send a message and enqueue an agent run:
 
 ```http
 POST /api/v1/conversations/{conversation_id}/messages
@@ -41,6 +41,18 @@ Content-Type: application/json
 
 {"content":"Посчитай продажи за январь 2025"}
 ```
+
+The endpoint responds with `202 Accepted`, a run with the `running` status, and a
+`Location` header pointing to `/api/v1/agent-runs/{run_id}`. Poll that URL until the
+status becomes `completed`, `needs_clarification`, or `failed`, then read the new
+assistant message from the conversation history.
+
+Only one run may be active per conversation. A second message submitted while a run
+is still `running` receives `409 Conflict` with the active run ID and its `Location`.
+
+The current MVP executes the task in the API process after sending the response. A
+process restart can interrupt an active run; use a durable Redis-backed worker queue
+before production deployment.
 
 Read history:
 
