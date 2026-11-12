@@ -1,5 +1,6 @@
 import asyncio
 import os
+from uuid import uuid4
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["REDIS_URL"] = "redis://localhost:6379/15"
@@ -33,15 +34,24 @@ class FakeCache:
 
 
 class FakeAgent:
+    def __init__(self):
+        self.calls = []
+
     async def run(self, question, *, organization_id, history):
+        self.calls.append({"question": question, "organization_id": organization_id, "history": history})
         return AgentResult(
             status="completed",
-            request_id="test-request",
+            request_id=uuid4().hex,
             message=f"Ответ на: {question}",
             usage={"input_tokens": 2, "output_tokens": 3, "total_tokens": 5},
             model_calls=1,
             elapsed_seconds=0.01,
         )
+
+
+class FailingAgent:
+    async def run(self, question, *, organization_id, history):
+        raise RuntimeError("agent is unavailable")
 
 
 def test_chat_flow_persists_history():
@@ -50,6 +60,7 @@ def test_chat_flow_persists_history():
     )
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
     fake_cache = FakeCache()
+    fake_agent = FakeAgent()
 
     async def session_override():
         async with session_factory() as session:
@@ -62,11 +73,12 @@ def test_chat_flow_persists_history():
     asyncio.run(prepare())
     app.dependency_overrides[get_session] = session_override
     app.dependency_overrides[get_cache] = lambda: fake_cache
-    app.dependency_overrides[get_agent_service] = lambda: FakeAgent()
+    app.dependency_overrides[get_agent_service] = lambda: fake_agent
     try:
         with TestClient(app) as client:
-            created = client.post("/api/v1/conversations", json={"organization_id": "demo-org"})
+            created = client.post("/api/v1/conversations", json={"organization_id": "  demo-org  "})
             assert created.status_code == 201
+            assert created.json()["organization_id"] == "demo-org"
             conversation_id = created.json()["id"]
 
             response = client.post(
@@ -79,6 +91,34 @@ def test_chat_flow_persists_history():
             history = client.get(f"/api/v1/conversations/{conversation_id}/messages")
             assert history.status_code == 200
             assert [message["role"] for message in history.json()] == ["user", "assistant"]
+
+            runs = client.get(f"/api/v1/conversations/{conversation_id}/agent-runs")
+            assert runs.status_code == 200
+            assert len(runs.json()) == 1
+            assert runs.json()[0]["id"] == response.json()["run"]["id"]
+
+            blank = client.post(
+                f"/api/v1/conversations/{conversation_id}/messages", json={"content": "   "}
+            )
+            assert blank.status_code == 422
+
+            trimmed = client.post(
+                f"/api/v1/conversations/{conversation_id}/messages", json={"content": "  Поступления  "}
+            )
+            assert trimmed.status_code == 201
+            assert trimmed.json()["user_message"]["content"] == "Поступления"
+            assert fake_agent.calls[-1]["history"] == "user: Продажи за январь\nassistant: Ответ на: Продажи за январь"
+
+            app.dependency_overrides[get_agent_service] = lambda: FailingAgent()
+            failed = client.post(
+                f"/api/v1/conversations/{conversation_id}/messages", json={"content": "Задолженность"}
+            )
+            assert failed.status_code == 201
+            assert failed.json()["run"]["status"] == "failed"
+            assert failed.json()["run"]["error"]["code"] == "AGENT_UNAVAILABLE"
+
+            runs = client.get(f"/api/v1/conversations/{conversation_id}/agent-runs")
+            assert [run["status"] for run in runs.json()] == ["completed", "completed", "failed"]
     finally:
         app.dependency_overrides.clear()
         asyncio.run(test_engine.dispose())

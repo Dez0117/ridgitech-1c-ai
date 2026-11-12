@@ -34,6 +34,18 @@ async def conversation_or_404(session: AsyncSession, conversation_id: UUID) -> C
     return conversation
 
 
+async def recent_messages(session: AsyncSession, conversation_id: UUID, limit: int) -> list[Message]:
+    if limit <= 0:
+        return []
+    result = await session.scalars(
+        select(Message)
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(limit)
+    )
+    return list(reversed(list(result)))
+
+
 def history_text(messages: list[Message]) -> str:
     selected = messages[-settings.agent_history_messages :] if settings.agent_history_messages else []
     history = "\n".join(f"{message.role}: {message.content}" for message in selected)
@@ -93,10 +105,11 @@ async def send_message(
     agent: AgentService = Depends(get_agent_service),
 ):
     conversation = await conversation_or_404(session, conversation_id)
-    previous_result = await session.scalars(
-        select(Message).where(Message.conversation_id == conversation_id).order_by(Message.created_at, Message.id)
+    previous_messages = await recent_messages(
+        session,
+        conversation_id,
+        settings.agent_history_messages,
     )
-    previous_messages = list(previous_result)
 
     user_message = Message(conversation_id=conversation_id, role="user", content=payload.content)
     session.add(user_message)
@@ -168,3 +181,14 @@ async def get_agent_run(run_id: UUID, session: AsyncSession = Depends(get_sessio
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent run not found")
     return run
+
+
+@router.get("/conversations/{conversation_id}/agent-runs", response_model=list[AgentRunRead])
+async def list_agent_runs(conversation_id: UUID, session: AsyncSession = Depends(get_session)):
+    await conversation_or_404(session, conversation_id)
+    result = await session.scalars(
+        select(AgentRun)
+        .where(AgentRun.conversation_id == conversation_id)
+        .order_by(AgentRun.created_at, AgentRun.id)
+    )
+    return list(result)

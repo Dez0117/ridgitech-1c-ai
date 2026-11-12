@@ -54,6 +54,12 @@ Inspect a persisted run:
 GET /api/v1/agent-runs/{run_id}
 ```
 
+List the run journal for a conversation:
+
+```http
+GET /api/v1/conversations/{conversation_id}/agent-runs
+```
+
 ## Development
 
 ```bash

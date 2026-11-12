@@ -6,6 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ConversationCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     organization_id: str = Field(default="demo-org", min_length=1, max_length=128)
     title: str | None = Field(default=None, min_length=1, max_length=255)
 
@@ -21,6 +23,8 @@ class ConversationRead(BaseModel):
 
 
 class MessageCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     content: str = Field(min_length=1, max_length=10_000)
 
 

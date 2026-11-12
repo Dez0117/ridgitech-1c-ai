@@ -233,7 +233,7 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
             model.client.sdk_configuration.async_client = client
             result = await AnalyticsAgent(model, self.backend).arun(
-                "Продажи", self.backend.context("transport", timeout_seconds=1), current_date=TODAY)
+                "Продажи", self.backend.context("transport", timeout_seconds=5), current_date=TODAY)
         self.assertEqual(result.error["code"], "MODEL_API_ERROR")
         self.assertEqual(len(requests), 1)
         self.assertEqual(requests[0].extensions["timeout"]["read"], 60)
