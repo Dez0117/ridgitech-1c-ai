@@ -9,3 +9,6 @@ runs/
 .DS_Store
 build/
 dist/
+.pytest_cache/
+.coverage
+htmlcov/
