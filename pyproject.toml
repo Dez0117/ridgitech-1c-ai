@@ -43,3 +43,6 @@ include = ["tools*", "agent*", "backend*", "services*"]
 [tool.setuptools.package-data]
 tools = ["*.md"]
 agent = ["prompts/*.md", "fixtures/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

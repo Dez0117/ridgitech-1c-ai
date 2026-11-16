@@ -17,6 +17,21 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json
+          import urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3) as response:
+              result = json.load(response)
+          raise SystemExit(0 if result['status'] == 'ok' else 1)
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
   worker:
