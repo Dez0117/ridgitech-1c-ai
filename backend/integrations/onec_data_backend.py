@@ -32,6 +32,8 @@ class OneCDataBackend:
     """HTTP-адаптер внутреннего сервиса данных к контракту агента."""
 
     def __init__(self, url: str, token: str = "", *, transport=None):
+        self.calls = []
+        self.bootstrap_info = None
         self.http = httpx.AsyncClient(
             base_url=url.rstrip("/") + "/", follow_redirects=False,
             headers={"X-Internal-Token": token} if token else {}, transport=transport,
@@ -70,7 +72,9 @@ class OneCDataBackend:
     async def bootstrap(self, timeout=60):
         data = await self.request("GET", "v1/bootstrap", timeout=timeout)
         try:
-            return Bootstrap.model_validate(data)
+            info = Bootstrap.model_validate(data)
+            self.bootstrap_info = info.model_dump(mode="json")
+            return info
         except ValidationError:
             raise BackendError("INVALID_API_RESPONSE", "Некорректный каталог сервиса данных.") from None
 
@@ -87,6 +91,7 @@ class OneCDataBackend:
     async def call(self, operation, arguments, *, context, timeout):
         if operation not in {"search_metrics", "get_metric_definition", "get_entity_schema", "resolve_dimension", "get_cash_receipts_by_direction"}:
             raise BackendError("UNSUPPORTED_OPERATION", "Операция ещё не подключена к реальной 1С.")
+        self.calls.append({"operation": operation, "arguments": arguments})
         payload = {
             "operation": operation, "arguments": arguments, "timeout": min(timeout, 60),
             "max_rows": context.remaining_rows,

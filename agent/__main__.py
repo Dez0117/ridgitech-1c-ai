@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from pydantic import ValidationError
+from tools import BackendError
 
 from .evaluation import compare_runs, default_output, evaluate, read_cases
 from .fixture_backend import FixtureBackend
@@ -18,7 +20,7 @@ from .providers import create_qwen_model
 
 
 def parser():
-    result = argparse.ArgumentParser(description="LangGraph-агент: Qwen через OpenRouter и синтетический backend.")
+    result = argparse.ArgumentParser(description="LangGraph-агент: Qwen, синтетические и реальные прогоны 1С.")
     commands = result.add_subparsers(dest="command", required=True)
     run = commands.add_parser("run", help="Один вопрос")
     run.add_argument("question")
@@ -30,6 +32,10 @@ def parser():
     evaluation.add_argument("--out", type=Path)
     evaluation.add_argument("--limit", type=int)
     evaluation.add_argument("--repeat", type=int, default=1)
+    evaluation.add_argument("--backend", choices=["fixture", "onec", "onec-snapshot"], default="fixture")
+    evaluation.add_argument("--snapshot", type=Path, help="Папка снимка для воспроизводимых прогонов 1С")
+    evaluation.add_argument("--onec-url", default=None, help="HTTP-адрес внутреннего сервиса данных")
+    evaluation.add_argument("--allow-demo", action="store_true", help="Разрешить демонстрационную методику 1С")
     compare = commands.add_parser("compare", help="Сравнение двух прогонов")
     compare.add_argument("before", type=Path)
     compare.add_argument("after", type=Path)
@@ -73,8 +79,12 @@ async def execute(args):
     output = args.out or default_output()
     config = {"name": "openrouter", "model": model.model_name, "temperature": args.temperature,
               "max_tokens": args.max_tokens, "reasoning": args.reasoning, "seed": args.seed}
+    reference_path = args.cases.with_suffix(".meta.json")
+    reference = json.loads(reference_path.read_text(encoding="utf-8")) if reference_path.exists() else None
     summary = await evaluate(model, cases, settings=settings, output=output, provider_config=config,
         prompt=prompt, timeout=args.timeout, repeat=args.repeat,
+        backend=args.backend, onec_url=args.onec_url or os.environ.get("ONEC_DATA_URL", "http://127.0.0.1:8011"),
+        onec_token=os.environ.get("ONEC_DATA_TOKEN", ""), allow_demo_metrics=args.allow_demo, reference=reference, snapshot=args.snapshot,
         progress=lambda row: print(f"{row['run_key']}: {'PASS' if row['grade']['passed'] else 'FAIL'}", file=sys.stderr))
     return {"output": str(output), **summary}
 
@@ -84,7 +94,7 @@ def main():
     args = parser().parse_args()
     try:
         payload = asyncio.run(execute(args))
-    except (ValueError, OSError, ValidationError) as exc:
+    except (ValueError, OSError, ValidationError, BackendError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(2)
     except KeyboardInterrupt:
