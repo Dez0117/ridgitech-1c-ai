@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,6 +16,10 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = Field(default=60, gt=0, le=60)
     agent_history_messages: int = Field(default=20, ge=0, le=100)
     cors_origins: str = "http://localhost:3000"
+    analytics_backend: Literal["fixture", "onec"] = "fixture"
+    onec_data_url: str = "http://127.0.0.1:8011"
+    onec_data_token: str = ""
+    onec_allow_demo_metrics: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:

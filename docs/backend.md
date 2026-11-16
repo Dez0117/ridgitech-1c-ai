@@ -20,8 +20,9 @@ The API runs `alembic upgrade head` before startup. OpenAPI is available at
 `http://localhost:8000/docs` and health status at `http://localhost:8000/health`.
 
 Set `OPENROUTER_API_KEY` in a local `.env` file to execute the real model. The current agent uses
-its existing `FixtureBackend` for synthetic 1C data; a real 1C HTTP adapter can replace it inside
-`backend/integrations/agent_service.py` when that API contract is available.
+`FixtureBackend` for synthetic 1C data by default. `ANALYTICS_BACKEND=onec` selects
+the internal data-service adapter inside `backend/integrations/agent_service.py`.
+See [1C connection](data/onec.md) for local checks, access scope and the demo-methodology flag.
 
 ## Layers
 

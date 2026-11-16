@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 backend = [
+    "httpx>=0.28,<1",
     "alembic>=1.14,<2",
     "arq>=0.28,<0.29",
     "asyncpg>=0.30,<1",
@@ -37,7 +38,7 @@ test = [
 ridgitech-agent = "agent.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["tools*", "agent*", "backend*"]
+include = ["tools*", "agent*", "backend*", "services*"]
 
 [tool.setuptools.package-data]
 tools = ["*.md"]

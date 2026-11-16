@@ -89,7 +89,7 @@ class FixtureBackend:
         if operation == "get_metric_definition":
             if arguments["metric_id"] not in self.metrics:
                 raise BackendError("METRIC_NOT_FOUND", "Метрика отсутствует в синтетическом каталоге.")
-            return BackendResult(data=self.metrics[arguments["metric_id"]], complete=True)
+            return BackendResult(data={**self.metrics[arguments["metric_id"]], "max_rows_per_plan": self.max_rows}, complete=True)
         if operation == "get_entity_schema":
             entity = arguments["entity_name"]
             return BackendResult(data={"entity_name": entity,
@@ -116,7 +116,8 @@ class FixtureBackend:
             groups = arguments.get("group_by", [])
         else:
             raise BackendError("UNSUPPORTED_OPERATION", "Операция не поддерживается тестовым backend.")
-        if len(rows) > self.max_rows:
+        limit = self.max_rows if context.remaining_rows is None else min(self.max_rows, context.remaining_rows)
+        if len(rows) > limit:
             raise BackendError("ROW_LIMIT", "Превышен лимит выгрузки; сузьте период или фильтры.")
         grouped, total = self._aggregate(rows, groups)
         if operation == "get_top_counterparties":

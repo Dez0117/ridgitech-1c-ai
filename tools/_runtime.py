@@ -2,7 +2,7 @@ import asyncio
 import copy
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from pydantic import ValidationError
@@ -19,16 +19,20 @@ class ToolContext:
     allowed_entity_names: frozenset[str]
     timeout_seconds: float = 60.0
     max_calls: int = 24
+    allow_demo_metrics: bool = False
+    remaining_rows: int | None = None
 
     def __post_init__(self):
         if not self.request_id or not self.base_id:
             raise ValueError("Request and base IDs are required")
         if not 0 < self.timeout_seconds <= 60 or not 1 <= self.max_calls <= 100:
             raise ValueError("Invalid execution limits")
+        if self.remaining_rows is not None and (type(self.remaining_rows) is not int or self.remaining_rows < 1):
+            raise ValueError("Остаток бюджета строк должен быть положительным целым числом")
 
 
 class BackendError(Exception):
-    """A safe error translated by the backend adapter; never include credentials."""
+    """Безопасная ошибка адаптера без учётных данных."""
 
     def __init__(self, code, message, retryable=False):
         super().__init__(message)
@@ -37,10 +41,11 @@ class BackendError(Exception):
 
 class AnalyticsBackend(Protocol):
     async def call(self, operation: str, arguments: dict, *, context: ToolContext, timeout: float) -> BackendResult:
-        """Call the configured analytics API and normalize its response.
+        """Вызвать настроенный API аналитики и привести ответ к общему контракту.
 
-        Apply the trusted access scope, preserve decimal strings and respect timeout.
-        Map HTTP errors to BackendError without URLs, headers or credentials.
+        Применить доверенную область доступа, остаток бюджета строк и тайм-аут.
+        Сохранить точные десятичные строки. Преобразовать HTTP-ошибки в BackendError
+        без адресов, заголовков и учётных данных.
         """
         ...
 
@@ -60,6 +65,9 @@ class Runtime:
         self.results = {}
         self.step_locks = {}
         self.plan_lock = asyncio.Lock()
+        self.row_budget_lock = asyncio.Lock()
+        self.plan_row_limit = None
+        self.plan_rows_used = 0
 
     def remaining(self):
         value = self.deadline - time.monotonic()
@@ -80,11 +88,11 @@ class Runtime:
             if field in arguments and arguments[field] not in allowed:
                 raise BackendError("ACCESS_DENIED", "Параметр недоступен в текущем контексте.")
 
-    async def read(self, operation, arguments):
+    async def read(self, operation, arguments, *, context=None):
         self.check_scope(arguments)
         async with asyncio.timeout(self.remaining()):
             response = await self.backend.call(
-                operation, copy.deepcopy(arguments), context=self.context, timeout=self.remaining())
+                operation, copy.deepcopy(arguments), context=context or self.context, timeout=self.remaining())
         try:
             result = response if isinstance(response, BackendResult) else BackendResult.model_validate(response)
             canonical(result.model_dump(mode="json"))
@@ -113,16 +121,39 @@ class Runtime:
                 return copy.deepcopy(self.results[step_id])
             if any(dep not in self.results for dep in step["depends_on"]):
                 raise BackendError("DEPENDENCY_PENDING", "Сначала выполните зависимости шага.")
-            result = await self.read(operation, arguments)
-            if result["complete"] is not True:
-                raise BackendError("INCOMPLETE_DATA", "Выборка неполная; сузьте период или фильтры.")
-            if not result["sources"]:
-                raise BackendError("MISSING_SOURCES", "API не указал источники результата.")
-            data = result["data"]
-            if not data or (isinstance(data, dict) and data.get("rows") == []):
-                result["warnings"].append("Выборка пуста; отсутствие данных не подтверждает нулевой итог.")
+            if self.plan_row_limit is None:
+                result = await self.read_business(operation, arguments, self.context)
+            else:
+                # Шаги одного плана получают бюджет по очереди, включая параллельные вызовы графа.
+                async with self.row_budget_lock:
+                    remaining = self.plan_row_limit - self.plan_rows_used
+                    if remaining <= 0:
+                        raise BackendError("ROW_LIMIT", "Исчерпан общий бюджет строк плана; сузьте период.")
+                    try:
+                        result = await self.read_business(operation, arguments, replace(self.context, remaining_rows=remaining))
+                        rows = result["stats"].get("rows")
+                        if type(rows) is not int or rows < 0:
+                            raise BackendError("INVALID_API_RESPONSE", "API не сообщил корректное число обработанных строк.")
+                        if rows > remaining:
+                            raise BackendError("ROW_LIMIT", "Превышен общий бюджет строк плана.")
+                    except BaseException:
+                        # После ошибки или отмены неизвестен фактический расход выгрузки; бюджет закрывается.
+                        self.plan_rows_used = self.plan_row_limit
+                        raise
+                    self.plan_rows_used += rows
             self.results[step_id] = copy.deepcopy(result)
             return result
+
+    async def read_business(self, operation, arguments, context):
+        result = await self.read(operation, arguments, context=context)
+        if result["complete"] is not True:
+            raise BackendError("INCOMPLETE_DATA", "Выборка неполная; сузьте период или фильтры.")
+        if not result["sources"]:
+            raise BackendError("MISSING_SOURCES", "API не указал источники результата.")
+        data = result["data"]
+        if not data or (isinstance(data, dict) and data.get("rows") == []):
+            result["warnings"].append("Выборка пуста; отсутствие данных не подтверждает нулевой итог.")
+        return result
 
     async def invoke(self, name, arguments):
         try:
