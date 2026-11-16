@@ -17,6 +17,21 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import json
+          import urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3) as response:
+              result = json.load(response)
+          raise SystemExit(0 if result['status'] == 'ok' else 1)
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     restart: unless-stopped
 
   worker:
@@ -30,6 +45,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}
       AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-60}
+      ANALYTICS_BACKEND: ${ANALYTICS_BACKEND:-fixture}
+      ONEC_DATA_URL: http://onec-data:8011
+      ONEC_DATA_TOKEN: ${ONEC_DATA_TOKEN:-}
+      ONEC_ALLOW_DEMO_METRICS: ${ONEC_ALLOW_DEMO_METRICS:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,6 +60,25 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
+
+  onec-data:
+    profiles: [onec]
+    build:
+      context: .
+    command: ["uvicorn", "services.onec_data.main:app", "--host", "0.0.0.0", "--port", "8011"]
+    environment:
+      ODATA_BASE_URL: ${ODATA_BASE_URL:-https://176.108.255.199.sslip.io/Itmo/odata/standard.odata}
+      ODATA_USERNAME: ${ODATA_USERNAME:-odata}
+      ODATA_PASSWORD: ${ODATA_PASSWORD:-}
+      ONEC_DATA_TOKEN: ${ONEC_DATA_TOKEN:-}
+      ONEC_BASE_ID: ${ONEC_BASE_ID:-itmo}
+      ONEC_ORGANIZATION_IDS: ${ONEC_ORGANIZATION_IDS:-}
+      ODATA_PAGE_SIZE: ${ODATA_PAGE_SIZE:-100}
+      ODATA_MAX_ROWS: ${ODATA_MAX_ROWS:-5000}
+      ODATA_REQUESTS_PER_SECOND: ${ODATA_REQUESTS_PER_SECOND:-2}
+    ports:
+      - "127.0.0.1:8011:8011"
     restart: unless-stopped
 
   postgres:

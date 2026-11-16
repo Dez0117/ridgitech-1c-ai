@@ -27,7 +27,9 @@ async def execute(runtime, args: Arguments):
         definition = response["data"]
         if not isinstance(definition, dict) or definition.get("metric_id") != plan.metric_id:
             raise BackendError("INVALID_DEFINITION", "API вернул определение другой метрики.")
-        if definition.get("approval") != "approved":
+        if definition.get("approval") != "approved" and not (
+            definition.get("approval") == "demo" and runtime.context.allow_demo_metrics
+        ):
             raise BackendError("UNAPPROVED_METRIC", "Методология метрики требует согласования.")
         if (plan.semantic_version, plan.catalog_version) != (
                 definition.get("semantic_version"), definition.get("catalog_version")):
@@ -63,5 +65,6 @@ async def execute(runtime, args: Arguments):
         runtime.plan_id = hashlib.sha256(canonical(identity).encode()).hexdigest()[:24]
         runtime.plan = payload
         runtime.steps = steps
+        runtime.plan_row_limit = definition.get("max_rows_per_plan")
         runtime.step_locks = {step_id: asyncio.Lock() for step_id in steps}
         return accepted(runtime)
