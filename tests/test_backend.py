@@ -1,18 +1,21 @@
 import asyncio
 import os
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite://"
 os.environ["REDIS_URL"] = "redis://localhost:6379/15"
 
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from agent.models import AgentResult
-from backend.database import Base
+from backend.api.auth import COOKIE_NAME
+from backend.database import Base, get_session
 from backend.dependencies import get_chat_service
 from backend.main import create_app
+from backend.models import AgentRun, Message
 from backend.repositories import SqlAlchemyUnitOfWork
 from backend.services.agent_runs import AgentRunService
 from backend.services.chat import ChatService
@@ -81,6 +84,13 @@ def test_api_enqueues_and_worker_persists_result():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    @event.listens_for(test_engine.sync_engine, "connect")
+    def enable_foreign_keys(dbapi_connection, _):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
     fake_cache = FakeCache()
     fake_queue = FakeQueue()
@@ -89,10 +99,19 @@ def test_api_enqueues_and_worker_persists_result():
     def create_uow():
         return SqlAlchemyUnitOfWork(session_factory)
 
-    chat_service = ChatService(create_uow, fake_queue, fake_cache, history_messages=20)
+    organization_id = str(uuid4())
+    chat_service = ChatService(
+        create_uow, fake_queue, fake_cache, organization_id=organization_id, history_messages=20,
+    )
     worker_service = AgentRunService(create_uow, fake_cache, fake_agent)
     app = create_app(manage_resources=False)
     app.dependency_overrides[get_chat_service] = lambda: chat_service
+
+    async def get_test_session():
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = get_test_session
 
     async def prepare():
         async with test_engine.begin() as connection:
@@ -110,9 +129,25 @@ def test_api_enqueues_and_worker_persists_result():
     asyncio.run(prepare())
     try:
         with TestClient(app) as client:
-            created = client.post("/api/v1/conversations", json={"organization_id": "  demo-org  "})
+            assert client.get("/api/v1/conversations").status_code == 401
+            assert client.delete(f"/api/v1/conversations/{uuid4()}").status_code == 401
+            credentials = {"email": " First@Example.com ", "password": "strong-test-password"}
+            invalid = client.post("/api/v1/auth/register", json={**credentials, "name": "First", "password": "short"})
+            assert invalid.status_code == 422
+            assert all("input" not in error for error in invalid.json()["detail"])
+            registered = client.post("/api/v1/auth/register", json={**credentials, "name": " First "})
+            assert registered.status_code == 201
+            assert "HttpOnly" in registered.headers["set-cookie"]
+            assert "SameSite=strict" in registered.headers["set-cookie"]
+            assert registered.json() == {"id": registered.json()["id"], "email": "first@example.com", "name": "First"}
+            assert client.get("/api/v1/auth/me").json() == registered.json()
+
+            assert client.post("/api/v1/conversations", json={"organization_id": "other-org"}).status_code == 422
+            created = client.post("/api/v1/conversations", json={})
             assert created.status_code == 201
+            assert created.json()["organization_id"] == organization_id
             conversation_id = created.json()["id"]
+            conversation_path = f"/api/v1/conversations/{conversation_id}"
 
             accepted = client.post(
                 f"/api/v1/conversations/{conversation_id}/messages",
@@ -122,6 +157,7 @@ def test_api_enqueues_and_worker_persists_result():
             assert accepted.json()["run"]["status"] == "queued"
             assert accepted.headers["location"] == f"/api/v1/agent-runs/{accepted.json()['run']['id']}"
             assert len(fake_queue.jobs) == 1
+            assert fake_queue.jobs[0]["organization_id"] == organization_id
 
             history = client.get(f"/api/v1/conversations/{conversation_id}/messages")
             assert [message["role"] for message in history.json()] == ["user"]
@@ -131,6 +167,22 @@ def test_api_enqueues_and_worker_persists_result():
             assert run.json()["status"] == "completed"
             history = client.get(f"/api/v1/conversations/{conversation_id}/messages")
             assert [message["role"] for message in history.json()] == ["user", "assistant"]
+            assert client.get("/api/v1/conversations").json()[0]["preview"] == "Ответ на: Продажи за январь"
+
+            with TestClient(app) as other:
+                duplicate = other.post("/api/v1/auth/register", json={**credentials, "name": "Duplicate"})
+                assert duplicate.status_code == 409
+                registered_other = other.post(
+                    "/api/v1/auth/register",
+                    json={"email": "second@example.com", "name": "Second", "password": "second-test-password"},
+                )
+                assert registered_other.status_code == 201
+                assert other.get("/api/v1/conversations").json() == []
+                for path in (conversation_path, conversation_path + "/messages",
+                             conversation_path + "/agent-runs", accepted.headers["location"]):
+                    assert other.get(path).status_code == 404
+                assert other.post(conversation_path + "/messages", json={"content": "Question"}).status_code == 404
+                assert other.delete(conversation_path).status_code == 404
 
             asyncio.run(execute_last_job())
             history = client.get(f"/api/v1/conversations/{conversation_id}/messages")
@@ -168,9 +220,29 @@ def test_api_enqueues_and_worker_persists_result():
             )
             assert conflict.status_code == 409
             assert conflict.json()["detail"]["run_id"] == active.json()["run"]["id"]
+            delete_while_active = client.delete(conversation_path)
+            assert delete_while_active.status_code == 409
+            assert delete_while_active.headers["location"] == active.headers["location"]
 
             asyncio.run(execute_last_job())
-            new_conversation = client.post("/api/v1/conversations", json={"organization_id": "demo-org"})
+            assert client.get(conversation_path + "/messages").status_code == 200
+            assert conversation_id in fake_cache.values
+            deleted = client.delete(conversation_path)
+            assert deleted.status_code == 204
+            assert deleted.content == b""
+            assert conversation_id not in fake_cache.values
+            assert client.delete(conversation_path).status_code == 404
+            assert client.get(conversation_path + "/messages").status_code == 404
+            assert client.get(accepted.headers["location"]).status_code == 404
+            assert client.get("/api/v1/conversations").json() == []
+
+            async def verify_cascade():
+                async with session_factory() as session:
+                    assert await session.get(Message, UUID(accepted.json()["user_message"]["id"])) is None
+                    assert await session.get(AgentRun, UUID(accepted.json()["run"]["id"])) is None
+
+            asyncio.run(verify_cascade())
+            new_conversation = client.post("/api/v1/conversations", json={})
             fake_queue.fail = True
             unavailable = client.post(
                 f"/api/v1/conversations/{new_conversation.json()['id']}/messages",
@@ -180,6 +252,17 @@ def test_api_enqueues_and_worker_persists_result():
             failed_run = client.get(unavailable.headers["location"])
             assert failed_run.json()["status"] == "failed"
             assert failed_run.json()["error"]["code"] == "QUEUE_UNAVAILABLE"
+
+            original_token = client.cookies.get(COOKIE_NAME)
+            assert client.delete("/api/v1/auth/session").status_code == 204
+            assert client.get("/api/v1/auth/me").status_code == 401
+            client.cookies.set(COOKIE_NAME, original_token)
+            assert client.get("/api/v1/auth/me").status_code == 401
+            client.cookies.clear()
+            wrong = client.post("/api/v1/auth/login", json={**credentials, "password": "invalid-password"})
+            assert wrong.status_code == 401
+            assert client.post("/api/v1/auth/login", json=credentials).status_code == 200
+            assert client.get("/api/v1/conversations").json()[0]["id"] == new_conversation.json()["id"]
     finally:
         app.dependency_overrides.clear()
         asyncio.run(test_engine.dispose())

@@ -5,9 +5,10 @@ agent graph or tools.
 
 ## Services
 
-- `api`: FastAPI application on port `8000`;
+- `nginx`: reverse proxy for the UI and HTTP API on host port `8000`;
+- `api`: FastAPI and the built React application on the internal Compose network;
 - `worker`: ARQ process that executes the analytics agent;
-- `postgres`: conversation, message and agent-run history;
+- `postgres`: user accounts, JWT sessions, conversations, messages and agent runs;
 - `redis`: durable worker queue and short-lived conversation-history cache.
 
 Start the stack from the repository root:
@@ -16,7 +17,8 @@ Start the stack from the repository root:
 docker compose up --build
 ```
 
-The API runs `alembic upgrade head` before startup. OpenAPI is available at
+The API runs `alembic upgrade head` before startup. The UI is available at
+`http://localhost:8000/`. OpenAPI is available at
 `http://localhost:8000/docs` and health status at `http://localhost:8000/health`.
 
 Set `OPENROUTER_API_KEY` in a local `.env` file to execute the real model. The current agent uses
@@ -40,13 +42,36 @@ run and sends only its immutable input to Redis. The worker changes the status t
 
 ## Chat flow
 
+Register via `POST /api/v1/auth/register` with `name`, `email` and `password` (at least
+12 characters), or log in via `POST /api/v1/auth/login` with `email` and `password`.
+Both responses set an HttpOnly JWT cookie. Retain this cookie for subsequent API requests.
+`GET /api/v1/auth/me` reads the signed-in profile. `DELETE /api/v1/auth/session`
+revokes the current session in PostgreSQL and expires its cookie.
+
+Chats and runs are scoped to the signed-in user. `GET /api/v1/conversations` lists their
+chats with a preview of each chat's latest message. The API sets the organization for new
+chats from `CHAT_ORGANIZATION_ID`, which defaults to `demo-org` for the fixture backend.
+For the 1C backend, set this to an allowed organization UUID. Start a new chat after changing
+the organization. The migration preserves existing chats, their messages and their runs.
+Existing chats become visible after an administrator assigns each verified owner in
+`conversations.owner_id`.
+
+`DELETE /api/v1/conversations/{conversation_id}` deletes the owner's chat, messages and agent runs.
+It returns `409 Conflict` while a run is queued or running.
+
+Set a stable `JWT_SECRET` in `.env` to keep sessions across API restarts. Generate one with
+`python -c "import secrets; print(secrets.token_urlsafe(48))"`. With an empty secret, a local
+development process generates a temporary key. With `ENVIRONMENT=production`, a secret
+of at least 32 bytes and HTTPS for the Secure cookie are required. `JWT_SESSION_MINUTES`
+sets the session duration and defaults to 720 minutes.
+
 Create a conversation:
 
 ```http
 POST /api/v1/conversations
 Content-Type: application/json
 
-{"organization_id":"demo-org"}
+{}
 ```
 
 Send a message and enqueue an agent run:
@@ -100,3 +125,7 @@ alembic upgrade head
 uvicorn backend.main:app --reload
 arq backend.worker.WorkerSettings
 ```
+
+For live frontend development, run `npm install` and `npm run dev` in `frontend/`
+with a supported Node.js 22 release. Vite runs on `http://localhost:3000` and proxies
+`/api` to `http://127.0.0.1:8000`. `npm run build` type-checks and builds the UI.

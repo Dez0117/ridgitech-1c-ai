@@ -1,12 +1,16 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .api.auth import router as auth_router
 from .api.routes import router
 from .cache import ConversationCache, cache, get_cache
 from .config import settings
@@ -40,6 +44,12 @@ def create_app(*, manage_resources: bool = True) -> FastAPI:
         allow_headers=["*"],
     )
     application.include_router(router)
+    application.include_router(auth_router)
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_error(_, exc: RequestValidationError):
+        errors = [{key: error[key] for key in ("loc", "type", "msg")} for error in exc.errors()]
+        return JSONResponse(status_code=422, content={"detail": errors})
 
     @application.exception_handler(ResourceNotFoundError)
     async def resource_not_found(_, exc: ResourceNotFoundError):
@@ -92,6 +102,14 @@ def create_app(*, manage_resources: bool = True) -> FastAPI:
             redis=redis_status,
             worker=worker_status,
         )
+
+    frontend = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+    if (frontend / "index.html").is_file():
+        application.mount("/assets", StaticFiles(directory=frontend / "assets"), name="frontend-assets")
+
+        @application.get("/", include_in_schema=False)
+        async def web_interface():
+            return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-cache"})
 
     return application
 

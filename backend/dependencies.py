@@ -21,5 +21,6 @@ def get_chat_service(
         create_uow,
         queue,
         cache,
+        organization_id=settings.chat_organization_id,
         history_messages=settings.agent_history_messages,
     )

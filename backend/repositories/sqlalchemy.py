@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import TracebackType
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.models import AgentRun, Conversation, Message
@@ -16,8 +16,34 @@ class SqlAlchemyConversationRepository:
     async def get(self, conversation_id: UUID) -> Conversation | None:
         return await self.session.get(Conversation, conversation_id)
 
+    async def get_owned(
+        self, conversation_id: UUID, owner_id: UUID, *, lock: bool = False,
+    ) -> Conversation | None:
+        query = select(Conversation).where(Conversation.id == conversation_id, Conversation.owner_id == owner_id)
+        if lock:
+            query = query.with_for_update()
+        return await self.session.scalar(query)
+
+    async def list_owned(self, owner_id: UUID) -> list[tuple[Conversation, str | None]]:
+        preview = (
+            select(func.substr(Message.content, 1, 140))
+            .where(Message.conversation_id == Conversation.id)
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        result = await self.session.execute(
+            select(Conversation, preview)
+            .where(Conversation.owner_id == owner_id)
+            .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+        )
+        return [(conversation, snippet) for conversation, snippet in result]
+
     def add(self, conversation: Conversation) -> None:
         self.session.add(conversation)
+
+    async def delete(self, conversation: Conversation) -> None:
+        await self.session.delete(conversation)
 
 
 class SqlAlchemyMessageRepository:
