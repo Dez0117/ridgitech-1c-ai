@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = Field(default=60, gt=0, le=60)
     agent_history_messages: int = Field(default=20, ge=0, le=100)
     cors_origins: str = "http://localhost:3000"
+    jwt_secret: SecretStr = SecretStr("")
+    jwt_session_minutes: int = Field(default=720, ge=5, le=1440)
+
+    @model_validator(mode="after")
+    def validate_jwt_secret(self):
+        secret = self.jwt_secret.get_secret_value()
+        if (secret or self.environment != "development") and len(secret.encode()) < 32:
+            raise ValueError("JWT_SECRET must contain at least 32 bytes")
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:

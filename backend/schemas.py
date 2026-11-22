@@ -2,13 +2,40 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+    password: str = Field(min_length=1, max_length=128, repr=False)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+
+class RegisterRequest(LoginRequest):
+    name: str = Field(min_length=1, max_length=80)
+    password: str = Field(min_length=12, max_length=128, repr=False)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    email: str
+    name: str
 
 
 class ConversationCreate(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
-    organization_id: str = Field(default="demo-org", min_length=1, max_length=128)
     title: str | None = Field(default=None, min_length=1, max_length=255)
 
 
@@ -20,6 +47,10 @@ class ConversationRead(BaseModel):
     title: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ConversationSummary(ConversationRead):
+    preview: str | None
 
 
 class MessageCreate(BaseModel):

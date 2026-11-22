@@ -1,15 +1,33 @@
 services:
+  nginx:
+    image: nginx:1.28-alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   api:
     build:
       context: .
+      target: web
     environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_SESSION_MINUTES: ${JWT_SESSION_MINUTES:-720}
       DATABASE_URL: postgresql+asyncpg://ridgitech:ridgitech@postgres:5432/ridgitech
       REDIS_URL: redis://redis:6379/0
       CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}
       AGENT_TIMEOUT_SECONDS: ${AGENT_TIMEOUT_SECONDS:-60}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -17,11 +35,17 @@ services:
         condition: service_healthy
       worker:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; response = urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3); assert json.load(response)['status'] == 'ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
 
   worker:
     build:
       context: .
+      target: backend
     command: ["arq", "backend.worker.WorkerSettings"]
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
