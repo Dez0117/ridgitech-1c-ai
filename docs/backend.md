@@ -22,8 +22,9 @@ The API runs `alembic upgrade head` before startup. The UI is available at
 `http://localhost:8000/docs` and health status at `http://localhost:8000/health`.
 
 Set `OPENROUTER_API_KEY` in a local `.env` file to execute the real model. The current agent uses
-its existing `FixtureBackend` for synthetic 1C data; a real 1C HTTP adapter can replace it inside
-`backend/integrations/agent_service.py` when that API contract is available.
+`FixtureBackend` for synthetic 1C data by default. `ANALYTICS_BACKEND=onec` selects
+the internal data-service adapter inside `backend/integrations/agent_service.py`.
+See [1C connection](data/onec.md) for local checks, access scope and the demo-methodology flag.
 
 ## Layers
 
@@ -48,8 +49,10 @@ Both responses set an HttpOnly JWT cookie. Retain this cookie for subsequent API
 revokes the current session in PostgreSQL and expires its cookie.
 
 Chats and runs are scoped to the signed-in user. `GET /api/v1/conversations` lists their
-chats with a preview of each chat's latest message. The demo agent uses `demo-org`
-on the server. The migration preserves existing chats, their messages and their runs.
+chats with a preview of each chat's latest message. The API sets the organization for new
+chats from `CHAT_ORGANIZATION_ID`, which defaults to `demo-org` for the fixture backend.
+For the 1C backend, set this to an allowed organization UUID. Start a new chat after changing
+the organization. The migration preserves existing chats, their messages and their runs.
 Existing chats become visible after an administrator assigns each verified owner in
 `conversations.owner_id`.
 

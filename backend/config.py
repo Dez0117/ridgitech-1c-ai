@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,6 +18,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     jwt_secret: SecretStr = SecretStr("")
     jwt_session_minutes: int = Field(default=720, ge=5, le=1440)
+    chat_organization_id: str = Field(default="demo-org", min_length=1, max_length=128)
+    analytics_backend: Literal["fixture", "onec"] = "fixture"
+    onec_data_url: str = "http://127.0.0.1:8011"
+    onec_data_token: str = ""
+    onec_allow_demo_metrics: bool = False
 
     @model_validator(mode="after")
     def validate_jwt_secret(self):

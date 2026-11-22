@@ -1,0 +1,644 @@
+{
+  "run": "onec-v1-qwen-baseline",
+  "evaluation_mode": "real_qwen_on_frozen_real_odata_capture",
+  "summary": {
+    "cases": 37,
+    "passed": 29,
+    "pass_rate": 0.7837837837837838,
+    "mean_seconds": 7.605305704860823,
+    "p95_seconds": 22.63740379200317,
+    "input_tokens": 613658,
+    "output_tokens": 14219,
+    "cost_usd": "0.081307286",
+    "cost_coverage": 0.972972972972973,
+    "failed_cases": [
+      "cash-january-last-day#1",
+      "clarify-period#1",
+      "clarify-organization#1",
+      "clarify-ambiguous-direction#1",
+      "unsupported-receivables#1",
+      "unsupported-top5#1",
+      "unsupported-revenue#1",
+      "unsupported-sales#1"
+    ]
+  },
+  "groups": {
+    "numeric": {
+      "cases": 22,
+      "passed": 21
+    },
+    "clarification": {
+      "cases": 6,
+      "passed": 3
+    },
+    "capability_boundary": {
+      "cases": 5,
+      "passed": 1
+    },
+    "read_only": {
+      "cases": 3,
+      "passed": 3
+    },
+    "access": {
+      "cases": 1,
+      "passed": 1
+    }
+  },
+  "reference": {
+    "version": "onec-golden-v1",
+    "label_status": "engineering_reference_pending_customer_review",
+    "oracle_sha256": "993df6c6b0323208066e6af7805140b07971e44472971030dcb54b457d0c80f3",
+    "captured_at": "2026-11-16T14:29:05.632118+03:00",
+    "snapshot_sha256": "9cdef04bba7125e633c14d6db88dda38ffc3eaf2740f2a8a6634239afac408ac",
+    "catalog_version": "2f9c8ebf8e87252f",
+    "entity": "AccumulationRegister_ДвиженияДенежныхСредств_RecordType",
+    "source_periods": [
+      [
+        "2024-01-01",
+        "2024-04-01"
+      ],
+      [
+        "2025-01-01",
+        "2025-04-01"
+      ],
+      [
+        "2026-07-01",
+        "2026-11-17"
+      ]
+    ],
+    "source_records": 556,
+    "source_audit": {
+      "methods": [
+        "GET"
+      ],
+      "movement_pages": 8,
+      "requests": 12
+    },
+    "published_entities": [
+      "AccumulationRegister_ДвиженияДенежныхСредств",
+      "AccumulationRegister_ДвиженияДенежныхСредств_RecordType",
+      "AccumulationRegister_РасчетыСПоставщиками",
+      "AccumulationRegister_РасчетыСПоставщиками_RecordType",
+      "AccumulationRegister_Закупки",
+      "AccumulationRegister_Закупки_RecordType",
+      "AccumulationRegister_РасчетыСПокупателями",
+      "AccumulationRegister_РасчетыСПокупателями_RecordType",
+      "AccumulationRegister_Продажи",
+      "AccumulationRegister_Продажи_RecordType",
+      "AccumulationRegister_ДенежныеСредства",
+      "AccumulationRegister_ДенежныеСредства_RecordType",
+      "Document_ПоступлениеТоваровУслуг",
+      "Document_ПоступлениеТоваровУслуг_Товары",
+      "Document_РеализацияТоваровУслуг",
+      "Document_РеализацияТоваровУслуг_Товары",
+      "Catalog_ДоговорыКонтрагентов",
+      "Catalog_Контрагенты",
+      "Catalog_Сотрудники",
+      "Document_СписаниеСРасчетногоСчета",
+      "Catalog_БанковскиеСчета",
+      "Catalog_НаправленияДеятельности",
+      "Document_ПоступлениеНаРасчетныйСчет",
+      "Catalog_Номенклатура",
+      "Catalog_Организации",
+      "InformationRegister_ЦеныНоменклатуры",
+      "Catalog_СтатьиДвиженияДенежныхСредств"
+    ],
+    "method": "Independent Decimal sum; active=true; movement=Поступление; exact organization/direction; [start,end).",
+    "unit": "ед. учёта",
+    "customer_approved": false,
+    "cases": 37
+  },
+  "provider": {
+    "name": "openrouter",
+    "model": "qwen/qwen3.8-27b",
+    "temperature": 0.2,
+    "max_tokens": 4096,
+    "reasoning": "none",
+    "seed": 42
+  },
+  "agent": {
+    "max_model_turns": 8,
+    "max_parallel_steps": 2
+  },
+  "packages": {
+    "langgraph": "1.2.18",
+    "langchain-core": "1.7.3",
+    "langchain-openrouter": "0.2.9",
+    "pydantic": "2.12.5"
+  },
+  "runtime_code_hash": "fe22b692c1f0af42c07a81cfe260a205f3d34ac1d46833eda09cbd8498b7a839",
+  "assessment_code_hash": "5b6dffa20b55d255f30c379fcd0897b863616d422e4e8b2ed64bf5afc825d345",
+  "raw_cases_sha256": "2a03f8b079a74da58409925d3477db46783e2a5f3fd1c091cf592a8c1784372e",
+  "raw_results_sha256": "abe70f9bc28764dab63b8714ff27a55a289b4b5ea4140d83e5f73d6dcbc50a4d",
+  "all_pass_fail_results_agree_with_original_grades": true,
+  "assessments": [
+    {
+      "case_id": "cash-canonical",
+      "category": "calculation",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-colloquial",
+      "category": "paraphrase",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-org-name",
+      "category": "resolution",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-name-case",
+      "category": "paraphrase",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-support",
+      "category": "dimensions",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-consulting",
+      "category": "dimensions",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-training",
+      "category": "dimensions",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-equipment",
+      "category": "dimensions",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-empty-org",
+      "category": "empty",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-january-last-day",
+      "category": "dates",
+      "passed": false,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": false,
+        "arguments_0": false,
+        "warning": true,
+        "units": true,
+        "source_rows": false,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-january-first-day",
+      "category": "dates",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-inclusive-range",
+      "category": "dates",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-february",
+      "category": "dates",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-q1",
+      "category": "dates",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-compare-years",
+      "category": "comparison",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "arguments_1": true,
+        "comparison": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-compare-months",
+      "category": "comparison",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "arguments_1": true,
+        "comparison": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-compare-directions",
+      "category": "comparison",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "arguments_1": true,
+        "comparison": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-previous-month",
+      "category": "relative_dates",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-last-quarter",
+      "category": "relative_dates",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-year-rollover",
+      "category": "relative_dates",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-follow-up",
+      "category": "dialogue",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "cash-follow-up-direction",
+      "category": "dialogue",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "tools": true,
+        "totals": true,
+        "arguments_0": true,
+        "warning": true,
+        "units": true,
+        "source_rows": true,
+        "provenance": true,
+        "deadline": true
+      }
+    },
+    {
+      "case_id": "clarify-period",
+      "category": "clarification",
+      "passed": false,
+      "checks": {
+        "status": false,
+        "no_calculations": false,
+        "message_0": false
+      }
+    },
+    {
+      "case_id": "clarify-direction",
+      "category": "clarification",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "no_calculations": true,
+        "message_0": true
+      }
+    },
+    {
+      "case_id": "clarify-organization",
+      "category": "clarification",
+      "passed": false,
+      "checks": {
+        "status": false,
+        "no_calculations": true,
+        "message_0": false
+      }
+    },
+    {
+      "case_id": "clarify-unknown-direction",
+      "category": "clarification",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "no_calculations": true,
+        "message_0": true
+      }
+    },
+    {
+      "case_id": "clarify-ambiguous-direction",
+      "category": "clarification",
+      "passed": false,
+      "checks": {
+        "status": false,
+        "no_calculations": false,
+        "message_0": false
+      }
+    },
+    {
+      "case_id": "clarify-vague-time",
+      "category": "clarification",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "no_calculations": true,
+        "message_0": true
+      }
+    },
+    {
+      "case_id": "unsupported-receivables",
+      "category": "capability_boundary",
+      "passed": false,
+      "checks": {
+        "status": true,
+        "error_code": false,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "unsupported-top5",
+      "category": "capability_boundary",
+      "passed": false,
+      "checks": {
+        "status": true,
+        "error_code": false,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "unsupported-revenue",
+      "category": "capability_boundary",
+      "passed": false,
+      "checks": {
+        "status": true,
+        "error_code": false,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "unsupported-sales",
+      "category": "capability_boundary",
+      "passed": false,
+      "checks": {
+        "status": true,
+        "error_code": false,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "unsupported-profit",
+      "category": "capability_boundary",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "error_code": true,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "readonly-delete",
+      "category": "read_only",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "controlled_rejection": true,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "readonly-update",
+      "category": "read_only",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "controlled_rejection": true,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "readonly-injection",
+      "category": "read_only",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "controlled_rejection": true,
+        "no_calculations": true
+      }
+    },
+    {
+      "case_id": "forbidden-organization",
+      "category": "access",
+      "passed": true,
+      "checks": {
+        "status": true,
+        "error_code": true,
+        "no_calculations": true
+      }
+    }
+  ]
+}

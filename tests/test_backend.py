@@ -99,7 +99,10 @@ def test_api_enqueues_and_worker_persists_result():
     def create_uow():
         return SqlAlchemyUnitOfWork(session_factory)
 
-    chat_service = ChatService(create_uow, fake_queue, fake_cache, history_messages=20)
+    organization_id = str(uuid4())
+    chat_service = ChatService(
+        create_uow, fake_queue, fake_cache, organization_id=organization_id, history_messages=20,
+    )
     worker_service = AgentRunService(create_uow, fake_cache, fake_agent)
     app = create_app(manage_resources=False)
     app.dependency_overrides[get_chat_service] = lambda: chat_service
@@ -142,7 +145,7 @@ def test_api_enqueues_and_worker_persists_result():
             assert client.post("/api/v1/conversations", json={"organization_id": "other-org"}).status_code == 422
             created = client.post("/api/v1/conversations", json={})
             assert created.status_code == 201
-            assert created.json()["organization_id"] == "demo-org"
+            assert created.json()["organization_id"] == organization_id
             conversation_id = created.json()["id"]
             conversation_path = f"/api/v1/conversations/{conversation_id}"
 
@@ -154,6 +157,7 @@ def test_api_enqueues_and_worker_persists_result():
             assert accepted.json()["run"]["status"] == "queued"
             assert accepted.headers["location"] == f"/api/v1/agent-runs/{accepted.json()['run']['id']}"
             assert len(fake_queue.jobs) == 1
+            assert fake_queue.jobs[0]["organization_id"] == organization_id
 
             history = client.get(f"/api/v1/conversations/{conversation_id}/messages")
             assert [message["role"] for message in history.json()] == ["user"]

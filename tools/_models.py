@@ -89,6 +89,7 @@ class MetricPolicy(BaseModel):
     allowed_group_by: list[str] = Field(default_factory=list)
     allowed_filters: list[str] = Field(default_factory=list)
     required_filters: dict[str, FilterValue] = Field(default_factory=dict)
+    max_rows_per_plan: StrictInt | None = Field(default=None, ge=1, le=100000)
 
 
 __all__ = ["Arguments", "AwareDatetime", "BackendResult", "FilterValue", "MetricQuery", "PeriodQuery", "QueryPlan"]

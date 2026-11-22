@@ -18,11 +18,13 @@ class ChatService:
         queue: AgentRunQueue,
         cache: MessageCache,
         *,
+        organization_id: str,
         history_messages: int,
     ):
         self.uow_factory = uow_factory
         self.queue = queue
         self.cache = cache
+        self.organization_id = organization_id
         self.history_messages = history_messages
 
     @staticmethod
@@ -32,7 +34,7 @@ class ChatService:
 
     async def create_conversation(self, owner_id: UUID, title: str | None) -> Conversation:
         async with self.uow_factory() as uow:
-            conversation = Conversation(owner_id=owner_id, organization_id="demo-org", title=title)
+            conversation = Conversation(owner_id=owner_id, organization_id=self.organization_id, title=title)
             uow.conversations.add(conversation)
             await uow.commit()
             return conversation

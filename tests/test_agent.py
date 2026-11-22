@@ -151,6 +151,15 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.results, [])
         self.assertNotIn("4000.00", result.message)
 
+    async def test_row_limit_applies_to_entire_sequential_or_parallel_plan(self):
+        for dependent in [False, True]:
+            with self.subTest(dependent=dependent):
+                self.backend = FixtureBackend(max_rows=3)
+                result = await self.run_agent([submit(sales_plan(two_periods=True, dependent=dependent))])
+                self.assertEqual(result.status, "failed")
+                self.assertEqual(result.error["code"], "ROW_LIMIT")
+                self.assertEqual(result.results, [])
+
     async def test_invalid_monetary_result_is_rejected(self):
         original = self.backend.call
         async def broken(operation, *args, **kwargs):

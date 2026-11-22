@@ -1,0 +1,64 @@
+{
+  "version": "onec-golden-v1",
+  "label_status": "engineering_reference_pending_customer_review",
+  "oracle_sha256": "a4171bcc62016019ef18ecbe38725436025c253f1eebba002957891ef86e3718",
+  "captured_at": "2026-11-16T14:29:05.632118+03:00",
+  "snapshot_sha256": "9cdef04bba7125e633c14d6db88dda38ffc3eaf2740f2a8a6634239afac408ac",
+  "catalog_version": "2f9c8ebf8e87252f",
+  "entity": "AccumulationRegister_ДвиженияДенежныхСредств_RecordType",
+  "source_periods": [
+    [
+      "2024-01-01",
+      "2024-04-01"
+    ],
+    [
+      "2025-01-01",
+      "2025-04-01"
+    ],
+    [
+      "2026-07-01",
+      "2026-11-17"
+    ]
+  ],
+  "source_records": 556,
+  "source_audit": {
+    "methods": [
+      "GET"
+    ],
+    "movement_pages": 8,
+    "requests": 12
+  },
+  "published_entities": [
+    "AccumulationRegister_ДвиженияДенежныхСредств",
+    "AccumulationRegister_ДвиженияДенежныхСредств_RecordType",
+    "AccumulationRegister_РасчетыСПоставщиками",
+    "AccumulationRegister_РасчетыСПоставщиками_RecordType",
+    "AccumulationRegister_Закупки",
+    "AccumulationRegister_Закупки_RecordType",
+    "AccumulationRegister_РасчетыСПокупателями",
+    "AccumulationRegister_РасчетыСПокупателями_RecordType",
+    "AccumulationRegister_Продажи",
+    "AccumulationRegister_Продажи_RecordType",
+    "AccumulationRegister_ДенежныеСредства",
+    "AccumulationRegister_ДенежныеСредства_RecordType",
+    "Document_ПоступлениеТоваровУслуг",
+    "Document_ПоступлениеТоваровУслуг_Товары",
+    "Document_РеализацияТоваровУслуг",
+    "Document_РеализацияТоваровУслуг_Товары",
+    "Catalog_ДоговорыКонтрагентов",
+    "Catalog_Контрагенты",
+    "Catalog_Сотрудники",
+    "Document_СписаниеСРасчетногоСчета",
+    "Catalog_БанковскиеСчета",
+    "Catalog_НаправленияДеятельности",
+    "Document_ПоступлениеНаРасчетныйСчет",
+    "Catalog_Номенклатура",
+    "Catalog_Организации",
+    "InformationRegister_ЦеныНоменклатуры",
+    "Catalog_СтатьиДвиженияДенежныхСредств"
+  ],
+  "method": "Independent Decimal sum; active=true; movement=Поступление; exact organization/direction; [start,end).",
+  "unit": "ед. учёта",
+  "customer_approved": false,
+  "cases": 37
+}
