@@ -12,6 +12,8 @@ from tools import BackendError, BackendResult
 from tools import get_cash_receipts_by_direction, get_entity_schema, get_metric_definition, resolve_dimension, search_metrics
 from .client import ODataReader
 from .models import CATALOGS, METRIC_ID, MOVEMENTS
+from .observability import current_trace, log_event
+from .query import Condition, EntityQuery, Ordering, compile_query
 
 
 ARGUMENTS = {
@@ -37,15 +39,27 @@ class OneCDataService:
         self.catalog_lock = asyncio.Lock()
         self.cached = None
         self.cached_at = 0.0
+        self.metadata_lock = asyncio.Lock()
+        self.cached_metadata = None
+        self.metadata_cached_at = 0.0
 
-    async def snapshot(self):
+    async def metadata(self, *, force_refresh=False):
+        async with self.metadata_lock:
+            if not force_refresh and self.cached_metadata is not None and time.monotonic() - self.metadata_cached_at < self.settings.onec_metadata_ttl_seconds:
+                return self.cached_metadata
+            result = await self.reader.metadata()
+            self.cached_metadata, self.metadata_cached_at = result, time.monotonic()
+            log_event("metadata_refreshed", catalog_version=result[1])
+            return result
+
+    async def snapshot(self, *, force_refresh=False):
+        schema, version = await self.metadata(force_refresh=force_refresh)
         async with self.catalog_lock:
-            if self.cached is not None and time.monotonic() - self.cached_at < self.settings.onec_catalog_ttl_seconds:
+            if not force_refresh and self.cached is not None and self.cached["version"] == version and time.monotonic() - self.cached_at < self.settings.onec_catalog_ttl_seconds:
                 return self.cached
-            schema, version = await self.reader.metadata()
             dimensions = {}
             for kind in ("organization", "direction"):
-                dimensions[kind] = await self.load_dimension(kind)
+                dimensions[kind] = await self.load_dimension(kind, schema)
             allowed = {str(UUID(key.strip())) for key in self.settings.onec_organization_ids.split(",") if key.strip()}
             if allowed:
                 dimensions["organization"] = [row for row in dimensions["organization"] if row["id"] in allowed]
@@ -53,9 +67,45 @@ class OneCDataService:
             self.cached_at = time.monotonic()
             return self.cached
 
-    async def load_dimension(self, kind):
-        rows, _ = await self.reader.rows(CATALOGS[kind], select="Ref_Key,Description", order_by="Ref_Key", predicate="DeletionMark eq false")
-        return [{"id": str(UUID(row["Ref_Key"])), "name": row["Description"]} for row in rows]
+    async def load_dimension(self, kind, schema):
+        query = compile_query(EntityQuery(entity_name=CATALOGS[kind], select=["Ref_Key", "Description", "DeletionMark"],
+                              filters=[Condition(field="DeletionMark", value=False)], order_by=[Ordering(field="Ref_Key")]), schema)
+        rows, _ = await self.reader.rows(query.entity_name, **query.reader_arguments())
+        return [self.dimension_row(row) for row in rows]
+
+    @staticmethod
+    def dimension_row(row):
+        try:
+            identifier = str(UUID(row["Ref_Key"]))
+            name = row["Description"]
+            if not isinstance(name, str) or not name.strip() or row["DeletionMark"] is not False:
+                raise ValueError
+            return {"id": identifier, "name": name}
+        except (KeyError, TypeError, ValueError):
+            raise BackendError("INVALID_API_RESPONSE", "Запись справочника 1С не прошла проверку.") from None
+
+    async def search_counterparties(self, query, snapshot, scope):
+        try:
+            condition = Condition(field="Ref_Key", value=str(UUID(query)))
+        except ValueError:
+            condition = Condition(field="Description", operator="contains", value=query)
+        limit = min(self.settings.onec_dimension_search_limit, self.settings.odata_max_rows)
+        plan = EntityQuery(entity_name=CATALOGS["counterparty"], select=["Ref_Key", "Description", "DeletionMark"],
+                           filters=[Condition(field="DeletionMark", value=False), condition], limit=limit)
+        compiled = compile_query(plan, snapshot["schema"], allowed_entities=frozenset(scope.allowed_entity_names))
+        candidates, truncated, pages, seen = [], False, 0, set()
+        async for page in self.reader.iter_pages(compiled.entity_name, **compiled.reader_arguments(), truncate=True):
+            for row in page.rows:
+                candidate = self.dimension_row(row)
+                matches = candidate["id"] == condition.value if condition.field == "Ref_Key" else query.lower() in candidate["name"].lower()
+                if not matches or candidate["id"] in seen:
+                    raise BackendError("INVALID_API_RESPONSE", "Ответ справочника не соответствует поисковому фильтру или содержит дубли.")
+                seen.add(candidate["id"])
+                candidates.append(candidate)
+            truncated, pages = page.truncated, page.number
+        warnings = ["Найдено больше кандидатов, чем показано; уточните название или UUID контрагента."] if truncated else []
+        return BackendResult(data=candidates, warnings=warnings,
+                             stats={"rows": len(candidates), "pages": pages, "truncated": int(truncated)}, complete=True)
 
     def definition(self, snapshot):
         return {
@@ -118,17 +168,22 @@ class OneCDataService:
             entity = args["entity_name"]
             if entity not in snapshot["schema"]:
                 raise BackendError("ACCESS_DENIED", "Источник не опубликован для этого сценария.")
-            return BackendResult(data={"entity_name": entity, **snapshot["schema"][entity], "expand_paths": [], "catalog_version": snapshot["version"]}, complete=True)
+            return BackendResult(data={"entity_name": entity, **snapshot["schema"][entity], "expand_paths": [],
+                "catalog_version": snapshot["version"], "query_plan_schema": EntityQuery.model_json_schema(),
+                "query_execution": "Структурированный план проверяется слоем данных; расчёты доступны через согласованные инструменты метрик."}, complete=True)
         if operation == "resolve_dimension":
             if CATALOGS[args["dimension"]] not in scope.allowed_entity_names:
                 raise BackendError("ACCESS_DENIED", "Справочник недоступен.")
+            query = args["query"].strip()
+            if not query:
+                raise BackendError("INVALID_ARGUMENTS", "Укажите название или UUID для поиска.")
             if args["dimension"] == "counterparty":
-                candidates = await self.load_dimension("counterparty")
+                return await self.search_counterparties(query, snapshot, scope)
             else:
                 candidates = snapshot["dimensions"][args["dimension"]]
             if args["dimension"] == "organization":
                 candidates = [row for row in candidates if row["id"] in scope.allowed_organization_ids]
-            query = normalized(args["query"])
+            query = normalized(query)
             return BackendResult(data=[row for row in candidates if query in normalized(row["name"]) or query == row["id"]], complete=True)
         if MOVEMENTS not in scope.allowed_entity_names:
             raise BackendError("ACCESS_DENIED", "Регистр недоступен.")
@@ -153,35 +208,40 @@ class OneCDataService:
             expected = self.definition(snapshot)["required_filters"]
             if key not in expected or type(value) is not type(expected[key]) or value != expected[key]:
                 raise BackendError("INVALID_ARGUMENTS", "Фильтры метрики нельзя переопределять.")
-        predicate = (
-            f"Period ge datetime'{start.isoformat()}' and Period lt datetime'{end.isoformat()}' "
-            f"and Организация_Key eq guid'{organization}' and НаправлениеДеятельности_Key eq guid'{direction}' "
-            "and Active eq true and ВидДвиженияДС eq 'Поступление'"
-        )
         keys = snapshot["schema"][MOVEMENTS]["keys"]
         fields = list(dict.fromkeys(["Period", "Active", "Организация_Key", "НаправлениеДеятельности_Key", "ВидДвиженияДС", "Сумма", *keys]))
-        rows, pages = await self.reader.rows(MOVEMENTS, select=",".join(fields), order_by=",".join(keys), predicate=predicate, max_rows=max_rows)
+        plan = EntityQuery(entity_name=MOVEMENTS, select=fields, limit=max_rows, sum_field="Сумма", filters=[
+            Condition(field="Period", operator="ge", value=start.isoformat()),
+            Condition(field="Period", operator="lt", value=end.isoformat()),
+            Condition(field="Организация_Key", value=organization), Condition(field="НаправлениеДеятельности_Key", value=direction),
+            Condition(field="Active", value=True), Condition(field="ВидДвиженияДС", value="Поступление"),
+        ])
+        compiled = compile_query(plan, snapshot["schema"])
         total = Decimal(0)
         identities = set()
+        count, pages = 0, 0
         with localcontext() as decimal_context:
             decimal_context.prec = 50
-            for row in rows:
-                try:
-                    identity = tuple(row[key] for key in keys)
-                    point = datetime.fromisoformat(row["Period"])
-                    if identity in identities or not start <= point < end or row["Active"] is not True or row["Организация_Key"] != organization or row["НаправлениеДеятельности_Key"] != direction or row["ВидДвиженияДС"] != "Поступление":
-                        raise ValueError
-                    value = row["Сумма"]
-                    if isinstance(value, bool) or value is None:
-                        raise ValueError
-                    amount = Decimal(str(value))
-                    if not amount.is_finite() or abs(amount) >= Decimal("1e28"):
-                        raise ValueError
-                    total += amount
-                    identities.add(identity)
-                except (KeyError, TypeError, ValueError, InvalidOperation):
-                    raise BackendError("INVALID_API_RESPONSE", "Данные 1С не прошли проверку периода, фильтров или сумм.") from None
-            value = format(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), ".2f") if rows else None
+            async for page in self.reader.iter_pages(compiled.entity_name, **compiled.reader_arguments()):
+                pages = page.number
+                for row in page.rows:
+                    try:
+                        identity = tuple(row[key] for key in keys)
+                        point = datetime.fromisoformat(row["Period"])
+                        if identity in identities or not start <= point < end or row["Active"] is not True or row["Организация_Key"] != organization or row["НаправлениеДеятельности_Key"] != direction or row["ВидДвиженияДС"] != "Поступление":
+                            raise ValueError
+                        value = row["Сумма"]
+                        if isinstance(value, bool) or value is None:
+                            raise ValueError
+                        amount = Decimal(str(value))
+                        if not amount.is_finite() or abs(amount) >= Decimal("1e28"):
+                            raise ValueError
+                        total += amount
+                        identities.add(identity)
+                        count += 1
+                    except (KeyError, TypeError, ValueError, InvalidOperation):
+                        raise BackendError("INVALID_API_RESPONSE", "Данные 1С не прошли проверку периода, фильтров или сумм.") from None
+            value = format(total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP), ".2f") if count else None
         sources = [{
             "kind": "odata", "base_id": self.settings.onec_base_id, "entity": MOVEMENTS,
             "organization_id": organization, "direction_id": direction,
@@ -191,9 +251,14 @@ class OneCDataService:
             "retrieved_at": datetime.now(timezone.utc).isoformat(),
         }]
         warnings = [NOTICE, "Даты трактуются как даты учёта 1С в Europe/Moscow; согласованность страниц при изменении базы не гарантируется."]
-        if not rows:
+        if not count:
             warnings.append("Выборка пуста; отсутствие данных не подтверждает нулевой итог.")
+        trace = current_trace.get()
+        stats = {"rows": count, "pages": pages}
+        if trace:
+            stats.update(trace.metrics)
+            stats["duration_ms"] = round((time.monotonic() - trace.started) * 1000, 3)
         return BackendResult(
-            data={"rows": [{"organization_id": organization, "direction_id": direction, "value": value}] if rows else [], "total": value, "unit": "ед. учёта"},
-            sources=sources, warnings=warnings, stats={"rows": len(rows), "pages": pages}, complete=True,
+            data={"rows": [{"organization_id": organization, "direction_id": direction, "value": value}] if count else [], "total": value, "unit": "ед. учёта"},
+            sources=sources, warnings=warnings, stats=stats, complete=True,
         )

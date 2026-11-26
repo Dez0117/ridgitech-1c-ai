@@ -56,7 +56,8 @@ class AgentService:
         except BackendError as exc:
             return AgentResult(
                 status="failed", request_id=request_id, message=exc.message,
-                error={"code": exc.code, "message": exc.message, "retryable": exc.retryable},
+                error={"code": exc.code, "message": exc.message, "retryable": exc.retryable,
+                       **({"details": exc.details} if exc.details else {})},
                 elapsed_seconds=time.monotonic() - started,
             )
         finally:

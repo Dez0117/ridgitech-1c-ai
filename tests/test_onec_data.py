@@ -1,6 +1,8 @@
 from dataclasses import replace
 import asyncio
 import json
+import re
+import time
 import unittest
 from unittest.mock import patch
 
@@ -70,6 +72,16 @@ class OneCDataTests(unittest.IsolatedAsyncioTestCase):
             ids = {CATALOGS["organization"]: ORG, CATALOGS["direction"]: DIRECTION, CATALOGS["counterparty"]: OTHER}
             entity = request.url.path.split("/")[-1]
             data = self.counterparties if entity == CATALOGS["counterparty"] else [{"Ref_Key": ids[entity], "Description": "Разработка ПО" if entity == CATALOGS["direction"] else "Организация"}]
+            if entity == CATALOGS["counterparty"]:
+                predicate = request.url.params["$filter"]
+                found = re.search(r"substringof\('((?:[^']|'')*)',Description\)", predicate)
+                if found:
+                    query = found.group(1).replace("''", "'")
+                    data = [item for item in data if query in item["Description"].lower()]
+                identifier = re.search(r"Ref_Key eq guid'([^']+)'", predicate)
+                if identifier:
+                    data = [item for item in data if item["Ref_Key"] == identifier.group(1)]
+            data = [{"DeletionMark": False, **item} for item in data]
         skip = int(request.url.params["$skip"])
         top = int(request.url.params["$top"])
         return httpx.Response(200, json={"value": data[skip:skip + top]})
@@ -120,9 +132,10 @@ class OneCDataTests(unittest.IsolatedAsyncioTestCase):
         await self.backend.bootstrap()
         self.assertEqual((await self.invoke()).data["total"], "0.30")
         self.assertFalse(any(request.url.path.endswith(CATALOGS["counterparty"]) for request in self.requests))
-        with self.assertRaises(BackendError) as error:
-            await self.backend.call("resolve_dimension", {"dimension": "counterparty", "query": "Контрагент"}, context=self.context, timeout=30)
-        self.assertEqual(error.exception.code, "ROW_LIMIT")
+        result = await self.backend.call("resolve_dimension", {"dimension": "counterparty", "query": "Контрагент"}, context=self.context, timeout=30)
+        self.assertEqual(len(result.data), 2)
+        self.assertEqual(result.stats["truncated"], 1)
+        self.assertTrue(result.warnings)
         self.assertTrue(any(request.url.path.endswith(CATALOGS["counterparty"]) for request in self.requests))
         self.assertEqual((await self.invoke()).data["total"], "0.30")
 
@@ -137,36 +150,107 @@ class OneCDataTests(unittest.IsolatedAsyncioTestCase):
         self.rows = [row()]
         self.rows_by_period["2025-02-01"] = [row(3, Period="2025-02-15T12:00:00"), row(4, Period="2025-02-16T12:00:00")]
         tool, second = await self.accepted_two_period_plan()
-        with patch.object(self.reader, "rows", wraps=self.reader.rows) as reads:
+        with patch.object(self.reader, "iter_pages", wraps=self.reader.iter_pages) as reads:
             first_result = await tool.ainvoke(self.args)
             second_result = await tool.ainvoke(second)
         self.assertTrue(first_result["ok"])
         self.assertEqual(second_result["error"]["code"], "ROW_LIMIT")
         self.assertNotIn("data", second_result)
-        self.assertEqual([call.kwargs["max_rows"] for call in reads.await_args_list], [2, 1])
+        self.assertEqual([call.kwargs["max_rows"] for call in reads.call_args_list], [2, 1])
 
     async def test_parallel_steps_cannot_multiply_plan_budget(self):
         self.service.settings.odata_max_rows = 2
         self.rows_by_period["2025-02-01"] = [row(3, Period="2025-02-15T12:00:00"), row(4, Period="2025-02-16T12:00:00")]
         tool, second = await self.accepted_two_period_plan()
-        with patch.object(self.reader, "rows", wraps=self.reader.rows) as reads:
+        with patch.object(self.reader, "iter_pages", wraps=self.reader.iter_pages) as reads:
             results = await asyncio.gather(tool.ainvoke(self.args), tool.ainvoke(second))
         self.assertEqual(sum(result["ok"] for result in results), 1)
         self.assertEqual(next(result for result in results if not result["ok"])["error"]["code"], "ROW_LIMIT")
-        self.assertEqual(reads.await_count, 1)
-        self.assertEqual(reads.await_args.kwargs["max_rows"], 2)
+        self.assertEqual(reads.call_count, 1)
+        self.assertEqual(reads.call_args.kwargs["max_rows"], 2)
 
     async def test_parallel_steps_and_duplicate_calls_share_budget(self):
         self.service.settings.odata_max_rows = 3
         self.rows = [row()]
         self.rows_by_period["2025-02-01"] = [row(3, Period="2025-02-15T12:00:00"), row(4, Period="2025-02-16T12:00:00")]
         tool, second = await self.accepted_two_period_plan()
-        with patch.object(self.reader, "rows", wraps=self.reader.rows) as reads:
+        with patch.object(self.reader, "iter_pages", wraps=self.reader.iter_pages) as reads:
             first_result, duplicate, second_result = await asyncio.gather(tool.ainvoke(self.args), tool.ainvoke(self.args), tool.ainvoke(second))
         self.assertTrue(all(result["ok"] for result in (first_result, duplicate, second_result)))
         self.assertEqual(first_result, duplicate)
         self.assertEqual(first_result["stats"]["rows"] + second_result["stats"]["rows"], 3)
-        self.assertEqual([call.kwargs["max_rows"] for call in reads.await_args_list], [3, 2])
+        self.assertEqual([call.kwargs["max_rows"] for call in reads.call_args_list], [3, 2])
+
+    async def test_catalog_refresh_does_not_reload_fresh_metadata(self):
+        await self.backend.bootstrap()
+        self.requests.clear()
+        self.service.cached_at = time.monotonic() - self.service.settings.onec_catalog_ttl_seconds - 1
+        await self.backend.bootstrap()
+        self.assertFalse(any(item.url.path.endswith("$metadata") for item in self.requests))
+        self.assertTrue(any(item.url.path.endswith(CATALOGS["organization"]) for item in self.requests))
+
+    async def test_schema_refresh_and_forced_refresh_reload_catalogs(self):
+        await self.backend.bootstrap()
+        self.requests.clear()
+        self.service.metadata_cached_at = time.monotonic() - self.service.settings.onec_metadata_ttl_seconds - 1
+        self.metadata_entities = ENTITIES - {CATALOGS["counterparty"]}
+        info = await self.backend.bootstrap()
+        self.assertNotIn(CATALOGS["counterparty"], info.allowed_entity_names)
+        self.assertTrue(any(item.url.path.endswith(CATALOGS["organization"]) for item in self.requests))
+        self.requests.clear()
+        response = await self.backend.http.get("v1/bootstrap?refresh=true")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any(item.url.path.endswith("$metadata") for item in self.requests))
+
+    async def test_concurrent_bootstrap_refresh_is_shared(self):
+        await asyncio.gather(*(self.backend.bootstrap() for _ in range(3)))
+        self.assertEqual(sum(item.url.path.endswith("$metadata") for item in self.requests), 1)
+
+    async def test_failed_catalog_refresh_does_not_publish_stale_data(self):
+        await self.backend.bootstrap()
+        self.service.cached_at = time.monotonic() - self.service.settings.onec_catalog_ttl_seconds - 1
+        with patch.object(self.service, "load_dimension", side_effect=BackendError("TIMEOUT", "Тайм-аут.", True)):
+            with self.assertRaises(BackendError) as caught:
+                await self.backend.bootstrap()
+        self.assertEqual(caught.exception.code, "TIMEOUT")
+
+    async def test_changed_field_type_is_rejected_before_calculation(self):
+        original = self.reader.get
+        async def changed_schema(entity, *args, **kwargs):
+            if entity == "$metadata":
+                content = metadata_xml().replace(b'Name="Active" Type="Edm.Boolean"', b'Name="Active" Type="Edm.String"')
+                return httpx.Response(200, content=content, headers={"DataServiceVersion": "3.0"})
+            return await original(entity, *args, **kwargs)
+        with patch.object(self.reader, "get", changed_schema):
+            with self.assertRaises(BackendError) as caught:
+                await self.invoke()
+        self.assertEqual(caught.exception.code, "INVALID_SCHEMA")
+        self.assertFalse(any(item.url.path.endswith(MOVEMENTS) for item in self.requests))
+
+    async def test_counterparty_search_pushes_filter_and_uuid_to_odata(self):
+        self.counterparties = [{"Ref_Key": OTHER, "Description": "ООО О'Брайен"}, {"Ref_Key": ORG, "Description": "Другой"}]
+        for query in ("о'бра", OTHER):
+            result = await self.backend.call("resolve_dimension", {"dimension": "counterparty", "query": query}, context=self.context, timeout=30)
+            self.assertEqual([item["id"] for item in result.data], [OTHER])
+            self.assertEqual(result.stats["truncated"], 0)
+        predicates = [item.url.params["$filter"] for item in self.requests if item.url.path.endswith(CATALOGS["counterparty"])]
+        self.assertTrue(any("о''бра" in predicate for predicate in predicates))
+        self.assertTrue(any("Ref_Key eq guid'" in predicate for predicate in predicates))
+
+    async def test_late_page_failure_does_not_return_partial_sum(self):
+        await self.backend.bootstrap()
+        original = self.reader.get
+        async def failed_page(entity, parameters=None, **kwargs):
+            if entity == MOVEMENTS and parameters["$skip"] == 1:
+                raise BackendError("TIMEOUT", "Время чтения истекло.", True,
+                                   details={"stage": "read", "error_type": "ReadTimeout", "attempts": 1})
+            return await original(entity, parameters, **kwargs)
+        with patch.object(self.reader, "get", failed_page):
+            with self.assertRaises(BackendError) as error:
+                await self.invoke()
+        self.assertEqual(error.exception.code, "TIMEOUT")
+        self.assertEqual(error.exception.details["error_type"], "ReadTimeout")
+        self.assertEqual(error.exception.details["request_id"], "test")
 
     async def test_demo_permission_is_checked_by_plan_and_service(self):
         context = replace(self.context, allow_demo_metrics=False)

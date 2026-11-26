@@ -34,9 +34,10 @@ class ToolContext:
 class BackendError(Exception):
     """Безопасная ошибка адаптера без учётных данных."""
 
-    def __init__(self, code, message, retryable=False):
+    def __init__(self, code, message, retryable=False, *, details=None):
         super().__init__(message)
         self.code, self.message, self.retryable = code, message, retryable
+        self.details = details or {}
 
 
 class AnalyticsBackend(Protocol):
@@ -170,7 +171,8 @@ class Runtime:
             return {"ok": False, "error": {"code": "INVALID_ARGUMENTS", "message": "Проверьте типы и обязательные параметры.",
                 "retryable": False, "fields": [".".join(map(str, e["loc"])) for e in exc.errors()]}}
         except BackendError as exc:
-            return {"ok": False, "error": {"code": exc.code, "message": exc.message, "retryable": exc.retryable}}
+            return {"ok": False, "error": {"code": exc.code, "message": exc.message, "retryable": exc.retryable,
+                    **({"details": exc.details} if exc.details else {})}}
         except TimeoutError:
             return {"ok": False, "error": {"code": "TIMEOUT", "message": "Превышено время ожидания API.", "retryable": True}}
         except OSError:

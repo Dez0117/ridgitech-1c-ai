@@ -14,8 +14,17 @@ class DataSettings(BaseSettings):
     odata_page_size: int = Field(default=100, ge=1, le=1000)
     odata_max_rows: int = Field(default=5000, ge=1, le=100000)
     odata_timeout_seconds: float = Field(default=15, gt=0, le=60)
+    odata_connect_timeout_seconds: float | None = Field(default=None, gt=0, le=60)
+    odata_read_timeout_seconds: float | None = Field(default=None, gt=0, le=60)
+    odata_write_timeout_seconds: float | None = Field(default=None, gt=0, le=60)
+    odata_pool_timeout_seconds: float | None = Field(default=None, gt=0, le=60)
+    odata_max_retries: int = Field(default=1, ge=0, le=3)
+    odata_retry_backoff_seconds: float = Field(default=0.5, ge=0, le=10)
+    odata_max_connections: int = Field(default=4, ge=1, le=20)
     odata_requests_per_second: float = Field(default=2, gt=0, le=50)
     onec_catalog_ttl_seconds: float = Field(default=60, gt=0, le=3600)
+    onec_metadata_ttl_seconds: float = Field(default=900, gt=0, le=86400)
+    onec_dimension_search_limit: int = Field(default=20, ge=1, le=100)
 
     @field_validator("odata_base_url")
     @classmethod

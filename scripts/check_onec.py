@@ -6,8 +6,10 @@ from datetime import date
 from decimal import Decimal
 import json
 import os
+from pathlib import Path
 from uuid import uuid4
 from unittest.mock import patch
+from dotenv import load_dotenv
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage
@@ -81,6 +83,7 @@ async def check(args):
 
 
 if __name__ == "__main__":
+    load_dotenv(Path.cwd() / ".env", override=False)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://127.0.0.1:8011")
     parser.add_argument("--start", default="2025-01-01")
@@ -91,7 +94,9 @@ if __name__ == "__main__":
     try:
         asyncio.run(check(parser.parse_args()))
     except BackendError as exc:
-        message = str(exc)
+        message = f"{exc.code}: {exc}"
+        if exc.details:
+            message += "\nДиагностика: " + json.dumps(exc.details, ensure_ascii=False)
         if exc.code == "API_UNAVAILABLE":
             message += (
                 "\nВ отдельном терминале из корня проекта запустите сервис:\n"
