@@ -1,4 +1,4 @@
-"""Replay a bounded real OData capture through the unchanged 1C service and HTTP adapter."""
+"""Воспроизведение ограниченной выгрузки OData через сервис данных 1С и HTTP-адаптер."""
 
 import hashlib
 import json
@@ -67,7 +67,8 @@ class OneCSnapshotBackend(OneCDataBackend):
         self.fingerprint = self.upstream.fingerprint
         settings = DataSettings(_env_file=None, odata_base_url="https://snapshot.invalid/odata",
             odata_username="snapshot", odata_password="unused-local-transport", onec_data_token="",
-            onec_base_id=self.upstream.data["base_id"], odata_requests_per_second=50, onec_organization_ids="")
+            onec_base_id=self.upstream.data["base_id"], odata_requests_per_second=50, onec_organization_ids="",
+            onec_metadata_refresh_seconds=0, onec_metadata_state_dir=None)
         self.reader = ODataReader(settings, transport=httpx.MockTransport(self.upstream))
         service = OneCDataService(self.reader)
         app = create_app(service)

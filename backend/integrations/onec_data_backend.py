@@ -78,7 +78,7 @@ class OneCDataBackend:
             error = data.get("error", {}) if isinstance(data, dict) else {}
             if not isinstance(error, dict):
                 error = {}
-            codes = {"ACCESS_DENIED", "INVALID_ARGUMENTS", "UNAPPROVED_METRIC", "METRIC_NOT_FOUND", "ROW_LIMIT", "INCOMPLETE_DATA", "ODATA_AUTH", "ODATA_ERROR", "INVALID_SCHEMA", "INVALID_API_RESPONSE", "TIMEOUT", "API_UNAVAILABLE"}
+            codes = {"ACCESS_DENIED", "INVALID_ARGUMENTS", "UNAPPROVED_METRIC", "METRIC_NOT_FOUND", "ROW_LIMIT", "INCOMPLETE_DATA", "ODATA_AUTH", "ODATA_ERROR", "INVALID_SCHEMA", "INVALID_API_RESPONSE", "TIMEOUT", "API_UNAVAILABLE", "METADATA_STATE_ERROR"}
             code = error.get("code")
             if not isinstance(code, str):
                 code = None
@@ -90,6 +90,7 @@ class OneCDataBackend:
                 "INCOMPLETE_DATA": "Получена неполная выборка.",
                 "ODATA_AUTH": "Проверьте доступ сервисной учётной записи 1С.",
                 "TIMEOUT": "Истекло время обращения к данным 1С.",
+                "METADATA_STATE_ERROR": "Проверьте доступность каталога сохранения схемы и журнала изменений 1С.",
             }
             raise BackendError(code if code in codes else "API_UNAVAILABLE", messages.get(code, "Сервис данных 1С отклонил запрос."),
                                error.get("retryable") is True if code in codes else response.status_code >= 500,

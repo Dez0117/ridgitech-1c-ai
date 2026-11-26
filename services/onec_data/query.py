@@ -77,13 +77,16 @@ def literal(value, kind):
                   "Edm.Int64": (-2 ** 63, 2 ** 63 - 1), "Edm.Byte": (0, 255), "Edm.SByte": (-128, 127)}
         if kind in ranges and type(value) is int:
             if ranges[kind][0] <= value <= ranges[kind][1]:
-                return str(value)
+                return str(value) + ("L" if kind == "Edm.Int64" else "")
         if kind in {"Edm.Decimal", "Edm.Double", "Edm.Single"} and type(value) in {str, int, float}:
             if len(str(value)) > 100:
                 raise ValueError
             amount = Decimal(str(value))
             if amount.is_finite() and abs(amount) < Decimal("1e28") and -28 <= amount.as_tuple().exponent <= 28:
-                return format(amount, "f")
+                text = format(amount, "f")
+                if kind in {"Edm.Single", "Edm.Double"} and "." not in text:
+                    text += ".0"
+                return text + {"Edm.Decimal": "M", "Edm.Single": "F", "Edm.Double": "D"}[kind]
         if kind in {"Edm.DateTime", "Edm.DateTimeOffset"} and isinstance(value, str):
             point = datetime.fromisoformat(value)
             if (point.tzinfo is None) != (kind == "Edm.DateTime"):

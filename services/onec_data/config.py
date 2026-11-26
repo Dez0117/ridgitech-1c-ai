@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,6 +26,8 @@ class DataSettings(BaseSettings):
     odata_requests_per_second: float = Field(default=2, gt=0, le=50)
     onec_catalog_ttl_seconds: float = Field(default=60, gt=0, le=3600)
     onec_metadata_ttl_seconds: float = Field(default=900, gt=0, le=86400)
+    onec_metadata_refresh_seconds: float = Field(default=86400, ge=0, le=2592000)
+    onec_metadata_state_dir: Path | None = Path("runs/onec-metadata")
     onec_dimension_search_limit: int = Field(default=20, ge=1, le=100)
 
     @field_validator("odata_base_url")

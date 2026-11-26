@@ -107,8 +107,12 @@ services:
       ODATA_RETRY_BACKOFF_SECONDS: ${ODATA_RETRY_BACKOFF_SECONDS:-0.5}
       ODATA_MAX_CONNECTIONS: ${ODATA_MAX_CONNECTIONS:-4}
       ONEC_METADATA_TTL_SECONDS: ${ONEC_METADATA_TTL_SECONDS:-900}
+      ONEC_METADATA_REFRESH_SECONDS: ${ONEC_METADATA_REFRESH_SECONDS:-86400}
+      ONEC_METADATA_STATE_DIR: /app/runs/onec-metadata
       ONEC_CATALOG_TTL_SECONDS: ${ONEC_CATALOG_TTL_SECONDS:-60}
       ONEC_DIMENSION_SEARCH_LIMIT: ${ONEC_DIMENSION_SEARCH_LIMIT:-20}
+    volumes:
+      - onec_metadata:/app/runs/onec-metadata
     ports:
       - "127.0.0.1:8011:8011"
     restart: unless-stopped
@@ -144,5 +148,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  onec_metadata:
   postgres_data:
   redis_data:

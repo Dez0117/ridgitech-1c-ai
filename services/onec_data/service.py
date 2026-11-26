@@ -1,18 +1,20 @@
 import asyncio
+from contextlib import aclosing
 import json
 import re
 import time
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, localcontext
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
 from tools import BackendError, BackendResult
 from tools import get_cash_receipts_by_direction, get_entity_schema, get_metric_definition, resolve_dimension, search_metrics
 from .client import ODataReader
-from .models import CATALOGS, METRIC_ID, MOVEMENTS
-from .observability import current_trace, log_event
+from .models import CATALOGS, ENTITIES, METRIC_ID, MOVEMENTS
+from .observability import current_trace, log_event, request_scope
+from .metadata_state import MetadataState, schema_diff
 from .query import Condition, EntityQuery, Ordering, compile_query
 
 
@@ -42,15 +44,60 @@ class OneCDataService:
         self.metadata_lock = asyncio.Lock()
         self.cached_metadata = None
         self.metadata_cached_at = 0.0
+        self.metadata_error = None
+        self.metadata_state = MetadataState(self.settings)
+        self.observed_metadata = self.metadata_state.load()
 
     async def metadata(self, *, force_refresh=False):
         async with self.metadata_lock:
-            if not force_refresh and self.cached_metadata is not None and time.monotonic() - self.metadata_cached_at < self.settings.onec_metadata_ttl_seconds:
+            if not force_refresh and self.metadata_error is None and self.cached_metadata is not None and time.monotonic() - self.metadata_cached_at < self.settings.onec_metadata_ttl_seconds:
                 return self.cached_metadata
-            result = await self.reader.metadata()
+            discovered, version = await self.reader.discover_metadata()
+            exposed = {name: entity for name, entity in discovered.items() if name in ENTITIES}
+            validation_error = None
+            try:
+                self.reader.validate_metadata(exposed)
+            except BackendError as exc:
+                validation_error = exc
+            accepted = validation_error is None
+            previous = self.observed_metadata
+            if previous is None or previous["version"] != version or previous["accepted"] != accepted:
+                event = {"timestamp": datetime.now(timezone.utc).isoformat(),
+                         "event": "metadata_changed" if previous else "metadata_initialized",
+                         "previous_version": previous["version"] if previous else None, "catalog_version": version,
+                         "accepted": accepted, "diff": schema_diff(previous["schema"], discovered) if previous else None}
+                try:
+                    self.metadata_state.record(discovered, version, accepted, event)
+                except BackendError as exc:
+                    self.metadata_error = exc
+                    raise
+                self.observed_metadata = {"schema": discovered, "version": version, "accepted": accepted}
+                log_event(event["event"], **{key: value for key, value in event.items() if key not in {"event", "timestamp"}})
+            self.metadata_error = validation_error
+            if validation_error:
+                log_event("metadata_rejected", catalog_version=version, error_code=validation_error.code)
+                raise validation_error
+            result = exposed, version
             self.cached_metadata, self.metadata_cached_at = result, time.monotonic()
             log_event("metadata_refreshed", catalog_version=result[1])
             return result
+
+    async def refresh_metadata_loop(self):
+        while True:
+            interval = self.settings.onec_metadata_refresh_seconds
+            if interval <= 0:
+                return
+            await asyncio.sleep(interval)
+            with request_scope("metadata-refresh-" + uuid4().hex, 60):
+                try:
+                    async with asyncio.timeout(60):
+                        await self.snapshot(force_refresh=True)
+                except BackendError as exc:
+                    log_event("metadata_refresh_failed", error_code=exc.code, **exc.details)
+                except TimeoutError:
+                    log_event("metadata_refresh_failed", error_code="TIMEOUT", stage="deadline")
+                except Exception as exc:
+                    log_event("metadata_refresh_failed", error_type=type(exc).__name__)
 
     async def snapshot(self, *, force_refresh=False):
         schema, version = await self.metadata(force_refresh=force_refresh)
@@ -85,27 +132,48 @@ class OneCDataService:
             raise BackendError("INVALID_API_RESPONSE", "Запись справочника 1С не прошла проверку.") from None
 
     async def search_counterparties(self, query, snapshot, scope):
+        target = normalized(query)
+        filters = [Condition(field="DeletionMark", value=False)]
+        alternatives = []
         try:
             condition = Condition(field="Ref_Key", value=str(UUID(query)))
+            filters.append(condition)
         except ValueError:
-            condition = Condition(field="Description", operator="contains", value=query)
+            condition = None
+            # Фильтр даёт надмножество совпадений е/ё без неподдерживаемых вложенных функций 1С.
+            chunks = [part for part in target.split("е") if part]
+            if chunks:
+                filters.append(Condition(field="Description", operator="contains", value=max(chunks, key=len)))
+            else:
+                alternatives = [Condition(field="Description", operator="contains", value=letter) for letter in ("е", "ё")]
         limit = min(self.settings.onec_dimension_search_limit, self.settings.odata_max_rows)
         plan = EntityQuery(entity_name=CATALOGS["counterparty"], select=["Ref_Key", "Description", "DeletionMark"],
-                           filters=[Condition(field="DeletionMark", value=False), condition], limit=limit)
+                           filters=filters, any_of=alternatives, limit=self.settings.odata_max_rows)
         compiled = compile_query(plan, snapshot["schema"], allowed_entities=frozenset(scope.allowed_entity_names))
-        candidates, truncated, pages, seen = [], False, 0, set()
-        async for page in self.reader.iter_pages(compiled.entity_name, **compiled.reader_arguments(), truncate=True):
-            for row in page.rows:
-                candidate = self.dimension_row(row)
-                matches = candidate["id"] == condition.value if condition.field == "Ref_Key" else query.lower() in candidate["name"].lower()
-                if not matches or candidate["id"] in seen:
-                    raise BackendError("INVALID_API_RESPONSE", "Ответ справочника не соответствует поисковому фильтру или содержит дубли.")
-                seen.add(candidate["id"])
-                candidates.append(candidate)
-            truncated, pages = page.truncated, page.number
-        warnings = ["Найдено больше кандидатов, чем показано; уточните название или UUID контрагента."] if truncated else []
+        candidates, truncated, pages, seen, scanned = [], False, 0, set(), 0
+        async with aclosing(self.reader.iter_pages(compiled.entity_name, **compiled.reader_arguments(), truncate=True, page_size=limit + 1)) as source:
+            async for page in source:
+                pages, scanned = page.number, scanned + len(page.rows)
+                for row in page.rows:
+                    candidate = self.dimension_row(row)
+                    if candidate["id"] in seen:
+                        raise BackendError("INVALID_API_RESPONSE", "Ответ справочника содержит повторяющиеся идентификаторы.")
+                    seen.add(candidate["id"])
+                    matches = candidate["id"] == condition.value if condition else target in normalized(candidate["name"])
+                    if condition and not matches:
+                        raise BackendError("INVALID_API_RESPONSE", "Ответ справочника не соответствует UUID поиска.")
+                    if matches:
+                        candidates.append(candidate)
+                    if len(candidates) > limit:
+                        truncated = True
+                        break
+                truncated = truncated or page.truncated
+                if truncated:
+                    break
+        candidates = candidates[:limit]
+        warnings = ["Поиск неполный: уточните название или UUID контрагента; показанный кандидат может быть не единственным."] if truncated else []
         return BackendResult(data=candidates, warnings=warnings,
-                             stats={"rows": len(candidates), "pages": pages, "truncated": int(truncated)}, complete=True)
+                             stats={"rows": len(candidates), "pages": pages, "scanned_rows": scanned, "truncated": int(truncated)}, complete=not truncated)
 
     def definition(self, snapshot):
         return {

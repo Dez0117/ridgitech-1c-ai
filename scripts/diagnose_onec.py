@@ -209,10 +209,14 @@ def main():
             results.append(result)
             if attempt < args.attempts:
                 time.sleep(args.interval)
-        token = setting("ONEC_DATA_TOKEN")
+        token = "" if args.no_auth else setting("ONEC_DATA_TOKEN")
+        endpoints = (("health", "/health", 5),) if args.no_auth else (
+            ("health", "/health", 5), ("contract", "/openapi.json", 5), ("bootstrap", "/v1/bootstrap", 65))
         with httpx.Client(headers={"X-Internal-Token": token} if token else {}) as client:
-            for label, endpoint, timeout in (("health", "/health", 5), ("contract", "/openapi.json", 5), ("bootstrap", "/v1/bootstrap", 65)):
+            for label, endpoint, timeout in endpoints:
                 emit("local_service", target=label, **local_probe(client, service_url, endpoint, timeout))
+        if args.no_auth:
+            emit("skipped", target="bootstrap", reason="Режим no-auth: обращения через сервисную учётную запись отключены")
         emit("summary", upstream_requests=len(results), network_failures=sum(bool(item.get("error")) for item in results),
              upstream_http_statuses=sorted({item.get("http_status", "unknown") for item in results}), report_path=str(path))
     print(f"Отчёт сохранён: {path}")

@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -56,6 +57,24 @@ class ODataReader:
             if delay > 0:
                 await asyncio.sleep(delay)
             self.last_call = time.monotonic()
+
+    @asynccontextmanager
+    async def connection_slot(self, deadline):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError
+        configured = self.settings.odata_pool_timeout_seconds or self.settings.odata_timeout_seconds
+        try:
+            async with asyncio.timeout(min(configured, remaining)):
+                await self.semaphore.acquire()
+        except TimeoutError:
+            if time.monotonic() >= deadline:
+                raise
+            raise httpx.PoolTimeout("Истекло время ожидания свободного соединения.") from None
+        try:
+            yield
+        finally:
+            self.semaphore.release()
 
     @staticmethod
     def certificate_error(exc):
@@ -123,7 +142,7 @@ class ODataReader:
                         phases[f"{phase}_ms"] = round((time.monotonic() - phase_starts[phase]) * 1000, 3)
 
             try:
-                async with self.semaphore:
+                async with self.connection_slot(deadline):
                     await self.throttle()
                     state["attempts"] = attempt
                     sent_at = time.monotonic()
@@ -145,7 +164,7 @@ class ODataReader:
                     "ReadTimeout": "read", "WriteTimeout": "write", "PoolTimeout": "pool"}.get(kind, "network")
                 retry = isinstance(exc, httpx.ConnectTimeout)
                 error = BackendError("TIMEOUT", "1С не ответила за отведённое время.", True,
-                                     details={"stage": stage, "error_type": kind, "attempts": attempt})
+                                     details={"stage": stage, "error_type": kind, "attempts": state["attempts"]})
             except httpx.RequestError as exc:
                 certificate = self.certificate_error(exc)
                 retry = isinstance(exc, httpx.ConnectError) and not certificate
@@ -168,7 +187,7 @@ class ODataReader:
             log_event("odata_retry", entity=path, page=page, attempt=attempt, delay_seconds=round(delay, 3))
             await asyncio.sleep(delay)
 
-    async def metadata(self):
+    async def discover_metadata(self):
         response = await self.get("$metadata")
         if response.headers.get("dataserviceversion", "").split(";")[0] != "3.0":
             raise BackendError("INVALID_SCHEMA", "Ожидался OData версии 3.0.")
@@ -184,10 +203,16 @@ class ODataReader:
                 types[item.attrib["Name"]] = {
                     "fields": {p.attrib["Name"]: p.attrib["Type"] for p in item if p.tag.endswith("}Property")},
                     "keys": [p.attrib["Name"] for p in item.iter() if p.tag.endswith("}PropertyRef")],
+                    "navigation": {p.attrib["Name"]: {key: value for key, value in p.attrib.items() if key != "Name"}
+                                   for p in item if p.tag.endswith("}NavigationProperty")},
                 }
             elif tag == "EntitySet":
                 sets[item.attrib["Name"]] = item.attrib["EntityType"].split(".")[-1]
-        catalog = {name: types[typ] for name, typ in sets.items() if name in {MOVEMENTS, *CATALOGS.values()} and typ in types}
+        catalog = {name: types[typ] for name, typ in sets.items() if typ in types}
+        return catalog, hashlib.sha256(response.content).hexdigest()[:16]
+
+    @staticmethod
+    def validate_metadata(catalog):
         required = {"Period", "Active", "Организация_Key", "НаправлениеДеятельности_Key", "ВидДвиженияДС", "Сумма"}
         mandatory = {MOVEMENTS, CATALOGS["organization"], CATALOGS["direction"]}
         if not mandatory <= catalog.keys() or not required <= catalog[MOVEMENTS]["fields"].keys() or not catalog[MOVEMENTS]["keys"]:
@@ -199,7 +224,12 @@ class ODataReader:
         for entity in (CATALOGS["organization"], CATALOGS["direction"]):
             if any(catalog[entity]["fields"].get(name) != kind for name, kind in {"Ref_Key": "Edm.Guid", "Description": "Edm.String", "DeletionMark": "Edm.Boolean"}.items()):
                 raise BackendError("INVALID_SCHEMA", "В обязательном справочнике отсутствуют нужные поля или типы.")
-        return catalog, hashlib.sha256(response.content).hexdigest()[:16]
+
+    async def metadata(self):
+        catalog, version = await self.discover_metadata()
+        exposed = {name: entity for name, entity in catalog.items() if name in {MOVEMENTS, *CATALOGS.values()}}
+        self.validate_metadata(exposed)
+        return exposed, version
 
     async def rows(self, entity, *, select, order_by, predicate=None, max_rows=None):
         result, pages = [], 0
@@ -208,15 +238,18 @@ class ODataReader:
             pages = page.number
         return result, pages
 
-    async def iter_pages(self, entity, *, select, order_by, predicate=None, max_rows=None, truncate=False):
+    async def iter_pages(self, entity, *, select, order_by, predicate=None, max_rows=None, truncate=False, page_size=None):
         limit = self.settings.odata_max_rows if max_rows is None else min(self.settings.odata_max_rows, max_rows)
         if type(limit) is not int or limit < 1:
             raise BackendError("ROW_LIMIT", "Исчерпан бюджет строк плана.")
+        size = self.settings.odata_page_size if page_size is None else min(page_size, self.settings.odata_page_size)
+        if type(size) is not int or size < 1:
+            raise BackendError("INVALID_ARGUMENTS", "Некорректный размер страницы.")
         count = 0
         seen = set()
         pages = 0
         while True:
-            top = min(self.settings.odata_page_size, limit - count + 1)
+            top = min(size, limit - count + 1)
             params = {"$format": "json", "$select": select, "$orderby": order_by, "$top": top, "$skip": count}
             if predicate:
                 params["$filter"] = predicate

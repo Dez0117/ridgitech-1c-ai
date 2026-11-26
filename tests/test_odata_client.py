@@ -146,6 +146,26 @@ class ODataClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(maximum, 2)
         self.assertTrue(all(item["upstream_requests"] == 1 for item in metrics))
 
+    async def test_pool_timeout_bounds_semaphore_wait_without_sending_request(self):
+        requests = []
+        def handle(request):
+            requests.append(request)
+            return httpx.Response(200, json={})
+        async with reader_for(handle, odata_max_connections=1, odata_pool_timeout_seconds=0.01) as reader:
+            await reader.semaphore.acquire()
+            started = time.monotonic()
+            try:
+                with request_scope("pool-wait", 1) as trace:
+                    with self.assertRaises(BackendError) as caught:
+                        await reader.get("$metadata")
+                    self.assertEqual(trace.metrics["upstream_requests"], 0)
+            finally:
+                reader.semaphore.release()
+            self.assertEqual(caught.exception.details, {"stage": "pool", "error_type": "PoolTimeout", "attempts": 0})
+            self.assertLess(time.monotonic() - started, 0.2)
+            self.assertEqual(requests, [])
+            self.assertEqual((await reader.get("$metadata")).status_code, 200)
+
     async def test_page_iterator_yields_before_fetching_the_next_page(self):
         requests = []
         def handle(request):

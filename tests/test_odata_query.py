@@ -62,3 +62,16 @@ class ODataQueryTests(unittest.TestCase):
                     compile_query({"entity_name": MOVEMENTS, "select": ["Сумма"], "filters": [{"field": "Сумма", "value": value}]}, SCHEMA)
         with self.assertRaises(BackendError):
             compile_query({"entity_name": MOVEMENTS, "select": ["Сумма"], "filters": [{"field": "Period", "value": "2025-01-01T00:00:00+03:00"}]}, SCHEMA)
+
+    def test_numeric_literals_keep_odata_v3_edm_suffixes(self):
+        cases = [("Edm.Byte", 255, "255"), ("Edm.SByte", -128, "-128"), ("Edm.Int16", 32767, "32767"),
+                 ("Edm.Int32", -2147483648, "-2147483648"), ("Edm.Int64", 5000000000, "5000000000L"),
+                 ("Edm.Int64", -9223372036854775808, "-9223372036854775808L"),
+                 ("Edm.Decimal", "123.45", "123.45M"), ("Edm.Single", "1.25", "1.25F"), ("Edm.Double", "1.25", "1.25D"),
+                 ("Edm.Single", 1, "1.0F"), ("Edm.Double", 1, "1.0D"),
+                 ("Edm.Double", "1e27", "1000000000000000000000000000.0D")]
+        for kind, value, expected in cases:
+            with self.subTest(kind=kind, value=value):
+                schema = {MOVEMENTS: {"keys": ["Value"], "fields": {"Value": kind}}}
+                compiled = compile_query({"entity_name": MOVEMENTS, "select": ["Value"], "filters": [{"field": "Value", "value": value}]}, schema)
+                self.assertEqual(compiled.predicate, "Value eq " + expected)

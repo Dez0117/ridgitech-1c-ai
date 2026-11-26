@@ -1,4 +1,6 @@
 from dataclasses import replace
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import asyncio
 import json
 import re
@@ -46,7 +48,8 @@ class OneCDataTests(unittest.IsolatedAsyncioTestCase):
         self.counterparties = [{"Ref_Key": OTHER, "Description": "Контрагент"}]
         self.metadata_entities = ENTITIES
         self.requests = []
-        settings = DataSettings(odata_base_url="https://onec.invalid/odata", odata_username="reader", odata_password=SecretStr("test-password"), odata_page_size=1, odata_requests_per_second=50)
+        settings = DataSettings(odata_base_url="https://onec.invalid/odata", odata_username="reader", odata_password=SecretStr("test-password"), odata_page_size=1, odata_requests_per_second=50,
+                                onec_metadata_refresh_seconds=0, onec_metadata_state_dir=None)
         self.reader = ODataReader(settings, transport=httpx.MockTransport(self.upstream))
         self.service = OneCDataService(self.reader)
         self.app = create_app(self.service)
@@ -74,10 +77,10 @@ class OneCDataTests(unittest.IsolatedAsyncioTestCase):
             data = self.counterparties if entity == CATALOGS["counterparty"] else [{"Ref_Key": ids[entity], "Description": "Разработка ПО" if entity == CATALOGS["direction"] else "Организация"}]
             if entity == CATALOGS["counterparty"]:
                 predicate = request.url.params["$filter"]
-                found = re.search(r"substringof\('((?:[^']|'')*)',Description\)", predicate)
+                found = re.findall(r"substringof\('((?:[^']|'')*)',Description\)", predicate)
                 if found:
-                    query = found.group(1).replace("''", "'")
-                    data = [item for item in data if query in item["Description"].lower()]
+                    queries = [query.replace("''", "'") for query in found]
+                    data = [item for item in data if any(query in item["Description"].lower() for query in queries)]
                 identifier = re.search(r"Ref_Key eq guid'([^']+)'", predicate)
                 if identifier:
                     data = [item for item in data if item["Ref_Key"] == identifier.group(1)]
@@ -135,6 +138,7 @@ class OneCDataTests(unittest.IsolatedAsyncioTestCase):
         result = await self.backend.call("resolve_dimension", {"dimension": "counterparty", "query": "Контрагент"}, context=self.context, timeout=30)
         self.assertEqual(len(result.data), 2)
         self.assertEqual(result.stats["truncated"], 1)
+        self.assertFalse(result.complete)
         self.assertTrue(result.warnings)
         self.assertTrue(any(request.url.path.endswith(CATALOGS["counterparty"]) for request in self.requests))
         self.assertEqual((await self.invoke()).data["total"], "0.30")
@@ -236,6 +240,94 @@ class OneCDataTests(unittest.IsolatedAsyncioTestCase):
         predicates = [item.url.params["$filter"] for item in self.requests if item.url.path.endswith(CATALOGS["counterparty"])]
         self.assertTrue(any("о''бра" in predicate for predicate in predicates))
         self.assertTrue(any("Ref_Key eq guid'" in predicate for predicate in predicates))
+
+    async def test_counterparty_search_preserves_e_yo_and_skips_superset_candidates(self):
+        self.service.settings.onec_dimension_search_limit = 1
+        self.counterparties = [{"Ref_Key": ORG, "Description": "ООО Палка"}, {"Ref_Key": OTHER, "Description": "ООО Ёлка"}]
+        for query in ("елка", "ЁЛКА", "ё"):
+            with self.subTest(query=query):
+                result = await self.backend.call("resolve_dimension", {"dimension": "counterparty", "query": query}, context=self.context, timeout=30)
+                self.assertEqual([item["id"] for item in result.data], [OTHER])
+                self.assertTrue(result.complete)
+                self.assertEqual(result.stats["truncated"], 0)
+
+    async def test_one_candidate_is_not_unique_when_second_match_exists(self):
+        self.service.settings.onec_dimension_search_limit = 1
+        self.counterparties = [{"Ref_Key": ORG, "Description": "Елка"}, {"Ref_Key": OTHER, "Description": "Ёлка"}]
+        result = await self.backend.call("resolve_dimension", {"dimension": "counterparty", "query": "елка"}, context=self.context, timeout=30)
+        self.assertEqual(len(result.data), 1)
+        self.assertFalse(result.complete)
+        self.assertEqual(result.stats["truncated"], 1)
+        self.assertTrue(result.warnings)
+
+    async def test_search_budget_exhaustion_does_not_claim_complete_match_list(self):
+        self.service.settings.odata_max_rows = 1
+        self.counterparties = [{"Ref_Key": ORG, "Description": "Палка"}, {"Ref_Key": OTHER, "Description": "Елка"}]
+        result = await self.backend.call("resolve_dimension", {"dimension": "counterparty", "query": "елка"}, context=self.context, timeout=30)
+        self.assertEqual(result.data, [])
+        self.assertFalse(result.complete)
+
+    async def test_background_refresh_runs_without_requests_and_is_cancelled(self):
+        self.service.settings.onec_metadata_refresh_seconds = 0.01
+        self.service.settings.odata_page_size = 100
+        app = create_app(self.service)
+        original = self.service.snapshot
+        attempts = 0
+        async def refresh(**kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise BackendError("TIMEOUT", "Тайм-аут.", True)
+            return await original(**kwargs)
+        async def wait_ready():
+            while self.service.cached is None:
+                await asyncio.sleep(0.005)
+        self.assertEqual(self.requests, [])
+        with patch.object(self.service, "snapshot", refresh), self.assertLogs("onec_data", level="INFO") as captured:
+            async with app.router.lifespan_context(app):
+                await asyncio.wait_for(wait_ready(), timeout=2)
+                task = app.state.metadata_refresh_task
+                self.assertFalse(task.done())
+            self.assertTrue(task.cancelled())
+        self.assertGreaterEqual(attempts, 2)
+        self.assertTrue(any(item.url.path.endswith("$metadata") for item in self.requests))
+        self.assertTrue(any(json.loads(item.getMessage())["event"] == "metadata_refresh_failed" for item in captured.records))
+
+    async def test_schema_diff_survives_restart_and_records_rejected_type_change(self):
+        with TemporaryDirectory() as folder:
+            self.service.settings.onec_metadata_state_dir = Path(folder)
+            first = OneCDataService(self.reader)
+            await first.metadata()
+            original = self.reader.get
+            async def changed(entity, *args, **kwargs):
+                if entity == "$metadata":
+                    content = metadata_xml().replace(b'Name="Active" Type="Edm.Boolean"', b'Name="Active" Type="Edm.String"')
+                    return httpx.Response(200, content=content, headers={"DataServiceVersion": "3.0"})
+                return await original(entity, *args, **kwargs)
+            with patch.object(self.reader, "get", changed):
+                with self.assertRaises(BackendError):
+                    await first.metadata(force_refresh=True)
+                with self.assertRaises(BackendError):
+                    await first.metadata()
+                restarted = OneCDataService(self.reader)
+                self.assertFalse(restarted.observed_metadata["accepted"])
+            await restarted.metadata()
+            events = [json.loads(line) for line in first.metadata_state.path.with_suffix(".changes.jsonl").read_text().splitlines()]
+            self.assertEqual([item["event"] for item in events], ["metadata_initialized", "metadata_changed", "metadata_changed"])
+            change = events[1]["diff"]["entities_changed"][MOVEMENTS]["fields_changed"]["Active"]
+            self.assertEqual(change, {"before": "Edm.Boolean", "after": "Edm.String"})
+            self.assertFalse(events[1]["accepted"])
+            self.assertTrue(events[2]["accepted"])
+
+    async def test_diff_tracks_unexposed_entity_without_widening_access(self):
+        await self.backend.bootstrap()
+        self.metadata_entities = ENTITIES | {"Catalog_Дополнительный"}
+        with self.assertLogs("onec_data", level="INFO") as captured:
+            await self.service.snapshot(force_refresh=True)
+        events = [json.loads(item.getMessage()) for item in captured.records]
+        changed = next(item for item in events if item["event"] == "metadata_changed")
+        self.assertIn("Catalog_Дополнительный", changed["diff"]["entities_added"])
+        self.assertNotIn("Catalog_Дополнительный", (await self.backend.bootstrap()).allowed_entity_names)
 
     async def test_late_page_failure_does_not_return_partial_sum(self):
         await self.backend.bootstrap()

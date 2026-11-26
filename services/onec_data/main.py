@@ -1,5 +1,5 @@
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 import secrets
 import re
 import time
@@ -21,11 +21,20 @@ def create_app(service: OneCDataService | None = None):
     async def lifespan(app):
         configure_logging()
         app.state.service = service or OneCDataService(ODataReader(DataSettings()))
-        yield
-        if service is None:
-            await app.state.service.reader.close()
+        interval = app.state.service.settings.onec_metadata_refresh_seconds
+        task = asyncio.create_task(app.state.service.refresh_metadata_loop()) if interval > 0 else None
+        app.state.metadata_refresh_task = task
+        try:
+            yield
+        finally:
+            if task is not None:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+            if service is None:
+                await app.state.service.reader.close()
 
-    app = FastAPI(title="Данные 1С", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Данные 1С", version="0.2.1", lifespan=lifespan)
 
     @app.middleware("http")
     async def trace_request(request: Request, call_next):
@@ -47,7 +56,7 @@ def create_app(service: OneCDataService | None = None):
     @app.exception_handler(BackendError)
     async def data_error(request, exc):
         status = {"TIMEOUT": 504, "API_UNAVAILABLE": 503, "ODATA_AUTH": 502, "ODATA_ERROR": 502,
-                  "INVALID_API_RESPONSE": 502, "ACCESS_DENIED": 403}.get(exc.code, 400)
+                  "INVALID_API_RESPONSE": 502, "ACCESS_DENIED": 403, "METADATA_STATE_ERROR": 500}.get(exc.code, 400)
         return JSONResponse(status_code=status, content={"error": {"code": exc.code, "message": exc.message, "retryable": exc.retryable,
             "details": {**exc.details, "request_id": request.state.request_id}}})
 
